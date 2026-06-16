@@ -14,3 +14,15 @@ def test_template_detail_returns_input_schema(client):
 
 def test_unknown_template_returns_404(client):
     assert client.get("/api/templates/does-not-exist").status_code == 404
+
+
+def test_voc_template_exposes_input_groups(client):
+    d = client.get("/api/templates/ana.rca.netcare-voc-trend").json()
+    assert [g["key"] for g in d["input_groups"]] == ["trend_id", "usid_date", "incident_id"]
+    usid_date = next(g for g in d["input_groups"] if g["key"] == "usid_date")
+    assert [i["name"] for i in usid_date["inputs"]] == ["usid", "date", "search_neighbors"]
+    # example placeholder + highlighted (**bold**) help on the first field
+    trend = d["input_groups"][0]["inputs"][0]
+    assert trend["placeholder"]
+    assert "**USID-level**" in trend["help"]
+    assert d["inputs"] == []  # grouped template has no flat inputs

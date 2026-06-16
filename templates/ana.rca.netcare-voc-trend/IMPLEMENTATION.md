@@ -26,6 +26,21 @@ panel(s). The current panels (volume/breakdown) are provisional placeholders; th
 structure agent will reshape the report to the steps as they're defined —
 coordinate panel changes. Below is the contract for the placeholders shipping now.
 
+## Inputs & the workflow starting point
+
+The user picks ONE of three mutually-exclusive input sets; the chosen set's key
+arrives as `${input._input_group}` (and in the audit event). **Branch the
+workflow's starting point on it** (exact logic TBD):
+
+| `_input_group` | fields | start the workflow from… |
+|---|---|---|
+| `trend_id` | `trend_id` (USID-level GSA/NetCare trend ID) | the given trend |
+| `usid_date` | `usid`, `date`, `search_neighbors` (bool) | look up trend(s) for the USID near the date; optionally search neighbors |
+| `incident_id` | `incident_id` (USID-Cluster-level VoC incident ID) | the given incident |
+
+Only the chosen set's fields are populated in `${input.*}`; the others resolve to
+empty. Your data-pull SQL / analyzers should switch on `_input_group`.
+
 ## What you own in `template.yaml`
 - the `data_pulls:` block (real Snowflake datasets / SQL / params / filters)
 - the `analysis:` block (swap `passthrough` for your real analyzer names + params)

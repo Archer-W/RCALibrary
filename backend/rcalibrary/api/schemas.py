@@ -6,11 +6,12 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from ..workflow.models import TemplateInput, TemplateMeta
+from ..workflow.models import InputGroup, TemplateInput, TemplateMeta
 
 
 class RunBody(BaseModel):
     inputs: dict[str, Any] = Field(default_factory=dict)
+    input_group: str | None = None  # which input set was chosen (grouped templates)
 
 
 class TemplateSummary(BaseModel):
@@ -53,6 +54,7 @@ class PanelPreview(BaseModel):
 class TemplateDetail(BaseModel):
     meta: TemplateMeta
     inputs: list[TemplateInput]
+    input_groups: list[InputGroup] = Field(default_factory=list)
     report_preview: list[PanelPreview]
 
 

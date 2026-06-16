@@ -17,7 +17,7 @@ from ..audit.base import AuditEvent, AuditLogger
 from ..auth.base import Principal
 from ..datasources.base import DataPullRequest, FetchResult, NeutralFilter
 from ..datasources.registry import DataSourceRegistry
-from ..errors import AnalysisError, RCAError
+from ..errors import AnalysisError, InputValidationError, RCAError
 from ..reporting.contract import ReportPayload
 from . import report_builder
 from .input_validation import validate_inputs
@@ -50,17 +50,39 @@ class TemplateEngine:
         template: Template,
         raw_inputs: dict[str, Any],
         principal: Principal | None = None,
+        input_group: str | None = None,
     ) -> TemplateRunResult:
         started = time.perf_counter()
         warnings: list[str] = []
 
-        inputs = validate_inputs(template.inputs, raw_inputs)
+        specs = self._resolve_input_specs(template, input_group)
+        inputs = validate_inputs(specs, raw_inputs)
+        if template.input_groups:
+            # Record which set was chosen so templates/analyzers can branch the
+            # workflow's starting point on it (referenced as ${input._input_group}).
+            inputs["_input_group"] = input_group
+
         datasets = self._run_data_pulls(template, inputs)
         analysis_results = self._run_analysis(template, datasets, inputs, warnings)
         report = report_builder.build(template, datasets, analysis_results, warnings)
 
-        self._emit_audit(template, principal, analysis_results, started, "ok")
+        self._emit_audit(template, principal, analysis_results, started, "ok", input_group)
         return TemplateRunResult(report=report, warnings=warnings)
+
+    def _resolve_input_specs(self, template: Template, input_group: str | None):
+        """Pick the input specs to validate against: the chosen group, or the
+        flat list when the template has no groups."""
+        if not template.input_groups:
+            return template.inputs
+        if not input_group:
+            raise InputValidationError({"_input_group": "Select which input set to use."})
+        group = next((g for g in template.input_groups if g.key == input_group), None)
+        if group is None:
+            valid = [g.key for g in template.input_groups]
+            raise InputValidationError(
+                {"_input_group": f"Unknown input set '{input_group}' (valid: {valid})"}
+            )
+        return group.inputs
 
     # -- stages --------------------------------------------------------------
     def _run_data_pulls(self, template: Template, inputs: dict) -> dict[str, FetchResult]:
@@ -105,7 +127,9 @@ class TemplateEngine:
                 raise AnalysisError(f"analysis '{step.id}' failed: {exc}") from exc
         return results
 
-    def _emit_audit(self, template, principal, analysis_results, started, status) -> None:
+    def _emit_audit(
+        self, template, principal, analysis_results, started, status, input_group=None
+    ) -> None:
         anomaly_count = sum(len(r.anomalies) for r in analysis_results.values())
         event = AuditEvent(
             event_type="template_run",
@@ -116,6 +140,7 @@ class TemplateEngine:
             duration_ms=round((time.perf_counter() - started) * 1000, 2),
             anomaly_count=anomaly_count,
             timestamp=datetime.now(timezone.utc).isoformat(),
+            extra={"input_group": input_group} if input_group else {},
         )
         self.audit.emit(event)
 

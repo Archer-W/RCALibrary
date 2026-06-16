@@ -92,6 +92,7 @@ def get_template(template_id: str, templates: TemplateRegistry = Depends(get_tem
     return TemplateDetail(
         meta=template.meta,
         inputs=template.inputs,
+        input_groups=template.input_groups,
         report_preview=[
             PanelPreview(id=p.id, type=p.type.value, title=p.title)
             for p in template.report.panels
@@ -106,6 +107,8 @@ def run_template(
     solutions: SolutionRegistry = Depends(get_solution_registry),
     principal: Principal = Depends(get_principal),
 ):
-    request = RunRequest(template_id=template_id, inputs=body.inputs)
+    request = RunRequest(
+        template_id=template_id, inputs=body.inputs, input_group=body.input_group
+    )
     solution = solutions.get(int(SolutionLevel.FIXED_WORKFLOW))
     return solution.run(request, principal)

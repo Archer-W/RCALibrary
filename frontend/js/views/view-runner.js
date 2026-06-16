@@ -44,7 +44,7 @@ export function render(container, params) {
       clear(reportWrap);
       reportWrap.appendChild(el("div", { class: "loading" }, "Running analysis…"));
       try {
-        const result = await endpoints.runTemplate(params.templateId, values);
+        const result = await endpoints.runTemplate(params.templateId, values, ctx.inputGroup);
         clear(reportWrap);
         if (reportInstance) reportInstance.destroy();
         reportInstance = renderReport(result.report, reportWrap);

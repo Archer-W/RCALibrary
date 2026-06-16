@@ -46,6 +46,8 @@ class RunRequest(BaseModel):
     # L1 uses template_id + inputs; L2/L3 reserve problem + context.
     template_id: str | None = None
     inputs: dict[str, Any] = Field(default_factory=dict)
+    # For templates with input_groups: which set the user chose.
+    input_group: str | None = None
     problem: str | None = None
     # seed_context carried forward on escalation (prior inputs / pulled data / findings).
     context: dict[str, Any] = Field(default_factory=dict)

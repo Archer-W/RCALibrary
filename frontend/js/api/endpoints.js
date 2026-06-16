@@ -5,7 +5,7 @@ export const listSolutions = () => getJSON("/solutions");
 export const listProblems = () => getJSON("/problems");
 export const listTemplates = () => getJSON("/templates");
 export const getTemplate = (id) => getJSON(`/templates/${encodeURIComponent(id)}`);
-export const runTemplate = (id, inputs) =>
-  postJSON(`/templates/${encodeURIComponent(id)}/run`, { inputs });
+export const runTemplate = (id, inputs, inputGroup = null) =>
+  postJSON(`/templates/${encodeURIComponent(id)}/run`, { inputs, input_group: inputGroup });
 export const getCurrentUser = () =>
   getJSON("/_internal/whoami").catch(() => ({ subject: "guest", is_authenticated: false }));

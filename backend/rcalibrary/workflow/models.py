@@ -44,7 +44,8 @@ class TemplateInput(BaseModel):
     type: InputType
     required: bool = True
     default: Any | None = None
-    help: str | None = None
+    help: str | None = None  # supports **bold** for highlighting words
+    placeholder: str | None = None  # example text shown in grey inside the field
     options: list[EnumOption] | None = None
     validation: InputValidation | None = None
 
@@ -53,6 +54,17 @@ class TemplateInput(BaseModel):
         if self.type == InputType.enum and not self.options:
             raise ValueError(f"input '{self.name}' is type=enum but has no options")
         return self
+
+
+class InputGroup(BaseModel):
+    """A mutually-exclusive set of inputs. The UI lets the user pick ONE group;
+    only the chosen group's fields are submitted, and the selected group key is
+    recorded (so the workflow can branch its starting point on it)."""
+
+    key: str
+    label: str
+    help: str | None = None
+    inputs: list[TemplateInput]
 
 
 class NeutralFilterSpec(BaseModel):
@@ -156,10 +168,20 @@ class TemplateMeta(BaseModel):
 
 class Template(BaseModel):
     meta: TemplateMeta
+    # A template uses either a flat `inputs` list, or `input_groups` (mutually
+    # exclusive sets the user chooses between). If both are given, groups win.
     inputs: list[TemplateInput] = Field(default_factory=list)
+    input_groups: list[InputGroup] = Field(default_factory=list)
     data_pulls: list[DataPull]
     analysis: list[AnalysisStep] = Field(default_factory=list)
     report: ReportLayout
+
+    @model_validator(mode="after")
+    def _check_input_groups(self):
+        keys = [g.key for g in self.input_groups]
+        if len(keys) != len(set(keys)):
+            raise ValueError("input_groups keys must be unique")
+        return self
 
     @model_validator(mode="after")
     def _check_cross_refs(self):

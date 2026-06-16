@@ -9,8 +9,19 @@ const HTML_TYPE = {
   string: "text",
 };
 
-export function createField(spec) {
-  const id = `f_${spec.name}`;
+// Minimal, safe inline formatter for help text: escape HTML, then **x** -> <strong>x</strong>.
+export function mdInline(s) {
+  const esc = String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  return esc.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+}
+
+export function createField(spec, idPrefix = "") {
+  // idPrefix keeps ids unique when the same field name appears in multiple
+  // input groups (all groups live in the DOM at once, just hidden).
+  const id = `f_${idPrefix}${spec.name}`;
   let input;
 
   if (spec.type === "enum") {
@@ -27,6 +38,7 @@ export function createField(spec) {
     input = el("input", { id, type: HTML_TYPE[spec.type] || "text", class: "control" });
     if (spec.type === "int") input.step = "1";
     if (spec.type === "float") input.step = "any";
+    if (spec.placeholder) input.placeholder = spec.placeholder;
     const v = spec.validation || {};
     if (v.min != null) input.min = v.min;
     if (v.max != null) input.max = v.max;
@@ -34,19 +46,29 @@ export function createField(spec) {
   }
 
   const errorEl = el("div", { class: "field-error" });
-  const wrapper = el(
-    "div",
-    { class: "field" },
-    el(
-      "label",
-      { for: id, class: "field-label" },
-      spec.label,
-      spec.required ? el("span", { class: "req" }, " *") : null
-    ),
-    input,
-    spec.help ? el("div", { class: "field-help" }, spec.help) : null,
-    errorEl
-  );
+  const help = spec.help ? el("div", { class: "field-help", html: mdInline(spec.help) }) : null;
+  const req = spec.required ? el("span", { class: "req" }, " *") : null;
+
+  let wrapper;
+  if (spec.type === "bool") {
+    // checkbox inline with its label, help below
+    wrapper = el(
+      "div",
+      { class: "field field-check" },
+      el("label", { class: "check-row" }, input, el("span", {}, spec.label, req)),
+      help,
+      errorEl
+    );
+  } else {
+    wrapper = el(
+      "div",
+      { class: "field" },
+      el("label", { for: id, class: "field-label" }, spec.label, req),
+      input,
+      help,
+      errorEl
+    );
+  }
 
   function read() {
     if (spec.type === "bool") return input.checked;

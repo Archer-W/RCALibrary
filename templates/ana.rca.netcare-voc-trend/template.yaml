@@ -41,28 +41,50 @@ meta:
     tags: ["customer care", "voc trend", "mobility service issue"]
 
 # --- STRUCTURE (framework/structure agent owns this block) -------------------
-# Provisional input set — finalize when workflow details are provided.
-inputs:
-  - name: start_date
-    label: "Start date"
-    type: date
-    required: true
-    help: "Beginning of the analysis window."
-  - name: end_date
-    label: "End date"
-    type: date
-    required: true
-    help: "End of the analysis window."
-  - name: region
-    label: "Region / market"
-    type: string
-    required: false
-    help: "Optional scope filter (leave blank for all)."
-  - name: product_line
-    label: "Product line"
-    type: string
-    required: false
-    help: "Optional scope filter (leave blank for all)."
+# Three mutually-exclusive input sets — the user picks ONE to start the lookup.
+# The chosen set's key (input_group) determines the workflow's starting point
+# (branching logic TBD; available to the data layer as ${input._input_group}).
+input_groups:
+  - key: trend_id
+    label: "GSA / NetCare Trend ID"
+    inputs:
+      - name: trend_id
+        label: "GSA or NetCare Trend ID"
+        type: string
+        required: true
+        help: "the **USID-level** trend ID of a GSA trend or NetCare Trend"
+        placeholder: "e.g. GSA-0123456789"
+
+  - key: usid_date
+    label: "USID + Date"
+    inputs:
+      - name: usid
+        label: "USID"
+        type: string
+        required: true
+        help: "the cell tower ID"
+        placeholder: "e.g. 0123456"
+      - name: date
+        label: "Date"
+        type: date
+        required: true
+        help: "the approximate date of the trend"
+      - name: search_neighbors
+        label: "Search neighbors"
+        type: bool
+        required: false
+        default: true
+        help: "whether to look up possible trends in the neighborhood (recommended)"
+
+  - key: incident_id
+    label: "Incident ID"
+    inputs:
+      - name: incident_id
+        label: "Incident ID"
+        type: string
+        required: true
+        help: "the **USID-Cluster-level** trend ID of a NetCare VoC incident"
+        placeholder: "e.g. INC-0123456"
 
 # --- DATA  (data agent owns this block) — TODO --------------------------------
 # TODO(data agent): replace these placeholders with real Snowflake datasets/SQL.
@@ -72,17 +94,21 @@ inputs:
 #   * Map each `query.dataset` below to a real view/table (or use `sql:` with
 #     named binds). Keep the data_pull `id`s and the documented columns stable so
 #     the report (structure) keeps working — coordinate before changing them.
+#   * Only the chosen input set's fields are populated; `_input_group` says which
+#     set was used (trend_id | usid_date | incident_id). Per-set query logic /
+#     workflow starting point is TBD — branch on _input_group.
 data_pulls:
   - id: voc_volume
     source: snowflake
     query:
       dataset: voc_complaint_volume          # TODO: real Snowflake view/table
       params:
-        start_date: "${input.start_date}"
-        end_date: "${input.end_date}"
-        region: "${input.region}"
-        product_line: "${input.product_line}"
-      # filters: []                           # TODO: add neutral filters if not using params
+        input_group: "${input._input_group}"
+        trend_id: "${input.trend_id}"
+        usid: "${input.usid}"
+        date: "${input.date}"
+        search_neighbors: "${input.search_neighbors}"
+        incident_id: "${input.incident_id}"
     columns: [date, complaint_count]          # contract the report below depends on
 
   - id: voc_breakdown
@@ -90,10 +116,10 @@ data_pulls:
     query:
       dataset: voc_complaint_breakdown        # TODO: real Snowflake view/table
       params:
-        start_date: "${input.start_date}"
-        end_date: "${input.end_date}"
-        region: "${input.region}"
-        product_line: "${input.product_line}"
+        input_group: "${input._input_group}"
+        trend_id: "${input.trend_id}"
+        usid: "${input.usid}"
+        incident_id: "${input.incident_id}"
     columns: [category, complaint_count]      # contract the report below depends on
 
 # --- ANALYSIS  (data agent owns this block) — TODO ----------------------------

@@ -55,7 +55,9 @@ class FixedWorkflowSolution(Solution):
 
     def run(self, request: RunRequest, principal: Principal | None = None) -> SolutionResult:
         template = self.templates.get(request.template_id)
-        result = self.engine.run(template, request.inputs, principal)
+        result = self.engine.run(
+            template, request.inputs, principal, input_group=request.input_group
+        )
         return SolutionResult(
             status="ok",
             level=int(self.level),
