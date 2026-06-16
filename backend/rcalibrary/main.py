@@ -6,7 +6,7 @@ last so ``/api/*`` routes match before the catch-all static handler.
 
 from __future__ import annotations
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -38,6 +38,16 @@ def create_app() -> FastAPI:
     )
 
     register_exception_handlers(app)
+
+    @app.middleware("http")
+    async def _revalidate_static(request: Request, call_next):
+        """Make the browser revalidate static frontend assets (via ETag) so UI
+        edits always show up. StaticFiles sets ETag/Last-Modified but no
+        Cache-Control, which lets browsers heuristically serve a stale copy."""
+        response = await call_next(request)
+        if not request.url.path.startswith("/api"):
+            response.headers["Cache-Control"] = "no-cache"
+        return response
 
     app.include_router(routes_meta.router)
     app.include_router(routes_templates.router)
