@@ -23,9 +23,18 @@ class Settings(BaseSettings):
     datasource: str = "sample"
 
     # Locations (templates + sample data are *data*, kept outside the code tree).
+    # Use-case repos point these at their own dirs via env vars.
     templates_dir: Path = REPO_ROOT / "templates"
     samples_dir: Path = REPO_ROOT / "data" / "samples"
     frontend_dir: Path = REPO_ROOT / "frontend"
+
+    # Use-case plugins: comma-separated importable module paths. Imported at
+    # startup so their analyzers / data sources / auth provider register before
+    # registries are built. See docs/07-building-use-cases.md.
+    plugins: str = ""
+
+    # Optional extra static dir served at /ext (for use-case custom panel JS).
+    frontend_ext_dir: Path | None = None
 
     # Usage-logging placeholder.
     audit_mode: str = "noop"  # "noop" | "file"

@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from . import deps
+from . import deps, extensions
 from .api import routes_l2, routes_l3, routes_meta, routes_templates
 from .config import get_settings
 from .errors import register_exception_handlers
@@ -18,6 +18,12 @@ from .errors import register_exception_handlers
 
 def create_app() -> FastAPI:
     settings = get_settings()
+
+    # Load use-case plugins FIRST, so their analyzers / data sources / auth
+    # provider register before the registries are built and templates validated.
+    if settings.plugins:
+        extensions.load_plugins(settings.plugins.split(","))
+
     app = FastAPI(
         title="RCALibrary",
         version="0.1.0",
@@ -40,6 +46,15 @@ def create_app() -> FastAPI:
 
     # Build singletons now so template-validation errors surface at startup.
     deps.get_solution_registry()
+
+    # Optional use-case static assets (e.g. custom panel JS) served at /ext.
+    # Mounted before the root catch-all so /ext/* matches first.
+    if settings.frontend_ext_dir and settings.frontend_ext_dir.exists():
+        app.mount(
+            "/ext",
+            StaticFiles(directory=str(settings.frontend_ext_dir)),
+            name="frontend-ext",
+        )
 
     # Serve the static frontend at the root (added last; /api/* already matched).
     if settings.frontend_dir.exists():

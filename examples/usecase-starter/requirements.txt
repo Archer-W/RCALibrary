@@ -1,0 +1,5 @@
+# Framework runtime deps (the submodule pins the framework version).
+-r framework/requirements.txt
+
+# Add your own use-case deps below, e.g. the Snowflake connector:
+# snowflake-connector-python[pandas]>=3.10

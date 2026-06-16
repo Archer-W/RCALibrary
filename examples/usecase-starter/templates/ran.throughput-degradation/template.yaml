@@ -1,0 +1,81 @@
+meta:
+  id: ran.cell-throughput
+  name: "Cell throughput triage"
+  description: "Pull PM counters for a cell, flag PRB saturation and BLER/throughput correlation."
+  version: "0.1.0"
+  solution_level: 1
+  tags: [ran, kpi]
+  problem:
+    id: ran.throughput-degradation
+    name: "RAN throughput degradation"
+    description: "Subscriber-impacting throughput drop on a cell."
+    domain: "RAN"
+
+inputs:
+  - name: cell_id
+    label: "Cell ID"
+    type: string
+    required: true
+    default: "C-001"
+    help: "Identifier of the cell under investigation."
+    validation: { pattern: "^[A-Z0-9-]+$" }
+  - name: lookback_hours
+    label: "Lookback (hours)"
+    type: int
+    required: true
+    default: 24
+    validation: { min: 1, max: 168 }
+  - name: prb_util_threshold
+    label: "PRB utilization % threshold"
+    type: float
+    required: true
+    default: 85.0
+    validation: { min: 1, max: 100 }
+
+data_pulls:
+  - id: pm
+    query:
+      dataset: cell_pm_counters
+      params:
+        cell_id: "${input.cell_id}"
+        lookback_hours: "${input.lookback_hours}"
+      filters:
+        - { column: cell_id, op: eq, value: "${input.cell_id}" }
+    columns: [ts, cell_id, prb_util, dl_thpt_mbps, bler]
+
+analysis:
+  - id: prb_breaches
+    analyzer: threshold_breach            # built-in
+    inputs: { dataset: pm }
+    params: { column: prb_util, op: gt, threshold: "${input.prb_util_threshold}", severity: high }
+  - id: kpi_corr
+    analyzer: ran_kpi_correlation         # custom (usecase/analyzers.py)
+    inputs: { dataset: pm }
+    params: { bler_max: 10, thpt_min: 5 }
+
+report:
+  title: "Cell throughput report"
+  panels:
+    - { id: breaches, type: stat, title: "PRB breaches", analysis_ref: prb_breaches,
+        encoding: { value: breach_count }, options: { unit: samples } }
+    - { id: corr, type: stat, title: "BLER/thpt correlated", analysis_ref: kpi_corr,
+        encoding: { value: correlated_points } }
+    - id: thpt_chart
+      type: line
+      title: "Downlink throughput"
+      dataset: pm
+      analysis_ref: kpi_corr
+      encoding: { x: ts, y: dl_thpt_mbps }
+      options: { x_title: Time, y_title: "Mbps" }
+    - id: prb_chart
+      type: line
+      title: "PRB utilization"
+      dataset: pm
+      analysis_ref: prb_breaches
+      encoding: { x: ts, y: prb_util }
+      options: { x_title: Time, y_title: "PRB %" }
+    - id: corr_table
+      type: table
+      title: "Correlated degradation samples"
+      analysis_ref: kpi_corr
+      encoding: { columns: [ts, prb_util, dl_thpt_mbps, bler] }

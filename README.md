@@ -57,13 +57,24 @@ samples. Interactive API docs live at `/docs`.
 | [`tests/`](tests/) | unit + API + e2e tests |
 | [`docs/`](docs/) | overview, decision framework, architecture, guides |
 
+## For another agent / contributor
+
+This repo is the **generic framework**. Real RCA problems, templates, custom
+analysis, real data, and authentication are built in a **separate private
+use-case repo** that consumes this one as a git submodule — without editing any
+framework file. **Start at [AGENTS.md](AGENTS.md).**
+
 ## Docs
+- [AGENTS.md](AGENTS.md) — start here: the two-agent ownership/locking model
 - [01 — Overview](docs/01-overview.md)
 - [02 — Decision framework (which solution when)](docs/02-decision-framework.md)
 - [03 — Architecture](docs/03-architecture.md)
 - [04 — Authoring templates](docs/04-authoring-templates.md)
 - [05 — Data sources](docs/05-data-sources.md)
 - [06 — Testing](docs/06-testing.md)
+- [07 — Building real use cases](docs/07-building-use-cases.md)
+- [08 — Collaboration, repos & branching](docs/08-collaboration-and-branching.md)
+- [examples/usecase-starter/](examples/usecase-starter/) — copy-paste scaffold for the use-case repo
 
 ## Tests
 

@@ -2,6 +2,9 @@
 import * as store from "./core/store.js";
 import * as endpoints from "./api/endpoints.js";
 import { startRouter } from "./core/router.js";
+import { registerPanel } from "./panels/registry.js";
+import { el } from "./core/dom.js";
+import { draw, baseLayout, baseConfig } from "./panels/plotly-base.js";
 
 // Import panel modules for their registration side-effects.
 import "./panels/panel-charts.js";
@@ -9,8 +12,20 @@ import "./panels/panel-kpi.js";
 import "./panels/panel-table.js";
 import "./panels/panel-misc.js";
 
+// Public extension API for use-case custom panels (see docs/07). A use-case repo
+// serves a module at /ext/custom.js (RCA_FRONTEND_EXT_DIR) that calls
+// window.RCA.registerPanel("my_type", (panel, bodyEl) => { ... }).
+window.RCA = { registerPanel, el, plotly: { draw, baseLayout, baseConfig } };
+
 async function boot() {
   const root = document.getElementById("app");
+
+  // Optionally load use-case custom panels before anything renders.
+  try {
+    await import("/ext/custom.js");
+  } catch {
+    /* no /ext/custom.js mounted — fine */
+  }
 
   // Load solutions before first render so the sidebar/landing have data.
   try {

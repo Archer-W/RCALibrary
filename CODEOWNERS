@@ -1,0 +1,16 @@
+# RCALibrary is the framework / platform. Everything in THIS repo is
+# framework-owned and reviewed by the framework agent. Real, specific use cases
+# (problems, templates, custom analyzers, real data sources, auth) live in a
+# SEPARATE private repo that consumes this one as a submodule — see
+# docs/08-collaboration-and-branching.md. Nothing in this repo is use-case-owned.
+
+* @Archer-W
+
+# Stability-critical interfaces the use-case repo depends on — change only with a
+# new version tag + changelog note:
+/backend/rcalibrary/workflow/models.py      @Archer-W
+/backend/rcalibrary/datasources/base.py     @Archer-W
+/backend/rcalibrary/analyzers/              @Archer-W
+/backend/rcalibrary/auth/base.py            @Archer-W
+/backend/rcalibrary/reporting/contract.py   @Archer-W
+/backend/rcalibrary/extensions.py           @Archer-W

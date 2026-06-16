@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from functools import lru_cache
 
+from . import extensions
+
 # Importing the package registers the built-in analyzers via its __init__.
 from .analyzers import default_registry as analyzer_registry
 from .audit.file import FileAuditLogger
@@ -36,6 +38,9 @@ def get_datasource_registry() -> DataSourceRegistry:
     registry = DataSourceRegistry(active=settings.datasource)
     registry.register(SampleDataProvider(settings.samples_dir))
     registry.register(SnowflakeProvider())  # Phase-2 stub
+    # Data sources contributed by use-case plugins (e.g. a real Snowflake/DB provider).
+    for provider in extensions.registered_datasources():
+        registry.register(provider)
     return registry
 
 
@@ -69,4 +74,6 @@ def get_solution_registry() -> SolutionRegistry:
 
 
 def get_principal() -> Principal:
-    return _auth_provider.authenticate()
+    # A use-case plugin may install a real auth provider; otherwise anonymous.
+    provider = extensions.get_auth_provider() or _auth_provider
+    return provider.authenticate()
