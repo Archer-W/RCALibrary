@@ -11,4 +11,7 @@ export RCA_FRONTEND_EXT_DIR="./frontend-ext"
 export RCA_PLUGINS="usecase.plugins"
 export RCA_DATASOURCE="${RCA_DATASOURCE:-sample}"   # set to "snowflake" once implemented
 
-exec uvicorn rcalibrary.main:app --reload --host "${RCA_HOST:-0.0.0.0}" --port "${RCA_PORT:-8000}"
+# Watch *.yaml too so template edits trigger a reload (default only watches *.py).
+exec uvicorn rcalibrary.main:app --reload \
+  --reload-include "*.py" --reload-include "*.yaml" \
+  --host "${RCA_HOST:-0.0.0.0}" --port "${RCA_PORT:-8000}"
