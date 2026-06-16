@@ -1,0 +1,42 @@
+/* Report dashboard grid + panel chrome. */
+.report-header { display: flex; align-items: baseline; gap: var(--sp-4); margin-bottom: var(--sp-3); }
+.report-time { font-size: 12px; color: var(--muted); }
+
+.panel-grid {
+  display: grid; grid-template-columns: repeat(12, 1fr); gap: var(--sp-4); align-items: start;
+}
+.panel {
+  background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: var(--sp-4); min-width: 0;
+}
+.panel-full { grid-column: span 12; }
+.panel-half { grid-column: span 6; }
+.panel-third { grid-column: span 4; }
+.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: var(--sp-3); }
+.panel-title { margin: 0; font-size: 14px; }
+.panel-body { min-height: 40px; }
+.panel-body .js-plotly-plot { width: 100%; }
+.panel-fallback, .panel-empty { color: var(--muted); font-size: 13px; padding: var(--sp-3); }
+
+/* Anomaly chip on a panel head */
+.panel-chip { font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--bad-tint); color: var(--bad); }
+.panel-chip.sev-medium, .panel-chip.sev-warn { background: var(--warn-tint); color: #a5641a; }
+.panel-chip.sev-low, .panel-chip.sev-info { background: var(--att-tint); color: var(--att-deep); }
+
+/* KPI / stat card */
+.kpi { padding: var(--sp-2) 0; }
+.kpi-value { font-size: 34px; font-weight: 800; color: var(--att-navy); line-height: 1; }
+.kpi-unit { font-size: 15px; font-weight: 600; color: var(--muted); }
+.kpi-label { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+.panel-third .panel { border-top: 3px solid var(--att); }
+
+/* Data table */
+.table-wrap { overflow-x: auto; max-height: 360px; overflow-y: auto; }
+.data-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.data-table th { position: sticky; top: 0; background: var(--bg-alt); text-align: left; font-weight: 600; color: var(--ink-soft); padding: 7px 10px; border-bottom: 1px solid var(--line); }
+.data-table td { padding: 6px 10px; border-bottom: 1px solid var(--line); }
+.data-table tr:nth-child(even) td { background: var(--bg-alt); }
+
+@media (max-width: 900px) {
+  .panel-full, .panel-half, .panel-third { grid-column: span 12; }
+}

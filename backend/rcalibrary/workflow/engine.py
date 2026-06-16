@@ -1,0 +1,134 @@
+"""The template engine — orchestrates one Level-1 run.
+
+Pipeline: validate inputs -> resolve & execute data pulls -> run analysis steps
+-> assemble report -> emit audit event.
+"""
+
+from __future__ import annotations
+
+import re
+import time
+from datetime import datetime, timezone
+from typing import Any
+
+from ..analyzers.context import AnalysisContext, AnalysisResult
+from ..analyzers.registry import AnalyzerRegistry
+from ..audit.base import AuditEvent, AuditLogger
+from ..auth.base import Principal
+from ..datasources.base import DataPullRequest, FetchResult, NeutralFilter
+from ..datasources.registry import DataSourceRegistry
+from ..errors import AnalysisError, RCAError
+from ..reporting.contract import ReportPayload
+from . import report_builder
+from .input_validation import validate_inputs
+from .models import Template
+
+# Only the ${input.<name>} namespace is interpolated (keeps templates declarative
+# and injection-safe — values become typed bind params, never concatenated SQL).
+_TOKEN = re.compile(r"\$\{input\.([a-zA-Z0-9_]+)\}")
+
+
+class TemplateRunResult:
+    def __init__(self, report: ReportPayload, warnings: list[str]):
+        self.report = report
+        self.warnings = warnings
+
+
+class TemplateEngine:
+    def __init__(
+        self,
+        datasources: DataSourceRegistry,
+        analyzers: AnalyzerRegistry,
+        audit: AuditLogger,
+    ):
+        self.datasources = datasources
+        self.analyzers = analyzers
+        self.audit = audit
+
+    def run(
+        self,
+        template: Template,
+        raw_inputs: dict[str, Any],
+        principal: Principal | None = None,
+    ) -> TemplateRunResult:
+        started = time.perf_counter()
+        warnings: list[str] = []
+
+        inputs = validate_inputs(template.inputs, raw_inputs)
+        datasets = self._run_data_pulls(template, inputs)
+        analysis_results = self._run_analysis(template, datasets, inputs, warnings)
+        report = report_builder.build(template, datasets, analysis_results, warnings)
+
+        self._emit_audit(template, principal, analysis_results, started, "ok")
+        return TemplateRunResult(report=report, warnings=warnings)
+
+    # -- stages --------------------------------------------------------------
+    def _run_data_pulls(self, template: Template, inputs: dict) -> dict[str, FetchResult]:
+        datasets: dict[str, FetchResult] = {}
+        for pull in template.data_pulls:
+            q = pull.query
+            request = DataPullRequest(
+                dataset=q.dataset,
+                sql=q.sql,
+                params=_resolve(q.params, inputs),
+                filters=[
+                    NeutralFilter(column=f.column, op=f.op, value=_resolve(f.value, inputs))
+                    for f in q.filters
+                ],
+                limit=q.limit,
+                columns=pull.columns,
+                namespace=template.meta.id,
+            )
+            provider = self.datasources.get(pull.source)
+            datasets[pull.id] = provider.fetch(request)
+        return datasets
+
+    def _run_analysis(
+        self, template: Template, datasets: dict[str, FetchResult], inputs: dict, warnings: list[str]
+    ) -> dict[str, AnalysisResult]:
+        results: dict[str, AnalysisResult] = {}
+        for step in template.analysis:
+            fn = self.analyzers.get(step.analyzer)
+            frame = datasets[step.inputs["dataset"]].frame
+            ctx = AnalysisContext(
+                dataset=frame, params=_resolve(step.params, inputs), inputs=inputs
+            )
+            try:
+                results[step.id] = fn(ctx)
+            except Exception as exc:  # noqa: BLE001
+                if step.on_error == "skip":
+                    warnings.append(f"analysis '{step.id}' skipped: {exc}")
+                    results[step.id] = AnalysisResult(summary={"error": str(exc)})
+                    continue
+                if isinstance(exc, RCAError):
+                    raise
+                raise AnalysisError(f"analysis '{step.id}' failed: {exc}") from exc
+        return results
+
+    def _emit_audit(self, template, principal, analysis_results, started, status) -> None:
+        anomaly_count = sum(len(r.anomalies) for r in analysis_results.values())
+        event = AuditEvent(
+            event_type="template_run",
+            principal_subject=(principal.subject if principal else "guest"),
+            template_id=template.meta.id,
+            level=template.meta.solution_level,
+            status=status,
+            duration_ms=round((time.perf_counter() - started) * 1000, 2),
+            anomaly_count=anomaly_count,
+            timestamp=datetime.now(timezone.utc).isoformat(),
+        )
+        self.audit.emit(event)
+
+
+def _resolve(value: Any, inputs: dict) -> Any:
+    """Recursively substitute ${input.<name>} tokens."""
+    if isinstance(value, str):
+        whole = _TOKEN.fullmatch(value.strip())
+        if whole:
+            return inputs.get(whole.group(1))
+        return _TOKEN.sub(lambda m: str(inputs.get(m.group(1), "")), value)
+    if isinstance(value, list):
+        return [_resolve(v, inputs) for v in value]
+    if isinstance(value, dict):
+        return {k: _resolve(v, inputs) for k, v in value.items()}
+    return value

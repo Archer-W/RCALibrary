@@ -1,0 +1,12 @@
+meta:
+  id: test.bad-dsref
+  name: Bad Dataset Ref
+data_pulls:
+  - id: d1
+    query: { dataset: ds1 }
+analysis:
+  - id: a1
+    analyzer: passthrough
+    inputs: { dataset: nonexistent }
+report:
+  panels: []

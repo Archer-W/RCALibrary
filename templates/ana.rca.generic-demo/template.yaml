@@ -1,0 +1,116 @@
+meta:
+  id: ana.rca.generic-demo
+  name: "Generic Demo RCA"
+  description: "Minimal end-to-end demo: pull two datasets, flag anomalies, render panels."
+  version: "0.1.0"
+  solution_level: 1
+  tags: [demo, reference]
+  problem:
+    id: demo.generic
+    name: "Generic Demo Problem"
+    description: "A stand-in network problem used to exercise the engine end to end."
+    domain: "Demo"
+
+# --- Form fields rendered dynamically by the UI ---
+inputs:
+  - name: node_id
+    label: "Node ID"
+    type: string
+    required: true
+    default: "node-001"
+    help: "Identifier of the network node under investigation."
+    validation: { pattern: "^node-[0-9]{3}$" }
+  - name: lookback_hours
+    label: "Lookback (hours)"
+    type: int
+    required: true
+    default: 24
+    help: "How far back to pull data."
+    validation: { min: 1, max: 168 }
+  - name: latency_slo_ms
+    label: "Latency SLO (ms)"
+    type: float
+    required: true
+    default: 120.0
+    help: "Latency above this is flagged as a breach."
+    validation: { min: 1, max: 10000 }
+
+# --- Source-agnostic data requests (sample CSV now, Snowflake later) ---
+data_pulls:
+  - id: latency_ts
+    # 'source' omitted -> uses the active data source (sample now).
+    query:
+      dataset: latency_timeseries          # logical name; provider resolves it
+      params:
+        node_id: ${input.node_id}          # bind param, not concatenated
+        lookback_hours: ${input.lookback_hours}
+      filters:
+        - { column: node_id, op: eq, value: "${input.node_id}" }
+    columns: [ts, node_id, latency_ms]
+
+  - id: error_counts
+    query:
+      dataset: error_counts
+      params:
+        node_id: ${input.node_id}
+        lookback_hours: ${input.lookback_hours}
+      filters:
+        - { column: node_id, op: eq, value: "${input.node_id}" }
+    columns: [ts, node_id, error_count]
+
+# --- Ordered analysis steps ---
+analysis:
+  - id: latency_breaches
+    analyzer: threshold_breach
+    inputs: { dataset: latency_ts }
+    params:
+      column: latency_ms
+      op: gt
+      threshold: ${input.latency_slo_ms}   # threshold can itself be input-bound
+      severity: high
+
+  - id: error_spikes
+    analyzer: zscore_anomaly
+    inputs: { dataset: error_counts }
+    params:
+      column: error_count
+      z_threshold: 2.5
+
+# --- Panels returned to the frontend (ordered) ---
+report:
+  title: "Generic Demo Report"
+  panels:
+    - id: breach_count
+      type: stat
+      title: "SLO breaches"
+      analysis_ref: latency_breaches
+      encoding: { value: breach_count }
+      options: { unit: "samples" }
+
+    - id: error_anomaly_count
+      type: stat
+      title: "Error anomalies"
+      analysis_ref: error_spikes
+      encoding: { value: anomaly_count }
+
+    - id: latency_chart
+      type: line
+      title: "Latency over time"
+      dataset: latency_ts
+      analysis_ref: latency_breaches
+      encoding: { x: ts, y: latency_ms }
+      options: { x_title: "Time", y_title: "Latency (ms)", unit: ms }
+
+    - id: error_chart
+      type: bar
+      title: "Error counts over time"
+      dataset: error_counts
+      analysis_ref: error_spikes
+      encoding: { x: ts, y: error_count }
+      options: { x_title: "Time", y_title: "Errors" }
+
+    - id: breach_table
+      type: table
+      title: "Breaching latency samples"
+      analysis_ref: latency_breaches
+      encoding: { columns: [ts, node_id, latency_ms] }

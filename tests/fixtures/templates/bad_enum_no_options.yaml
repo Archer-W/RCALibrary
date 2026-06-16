@@ -1,0 +1,12 @@
+meta:
+  id: test.bad-enum
+  name: Bad Enum
+inputs:
+  - name: choice
+    label: Choice
+    type: enum
+data_pulls:
+  - id: d1
+    query: { dataset: ds1 }
+report:
+  panels: []

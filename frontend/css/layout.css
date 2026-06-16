@@ -1,0 +1,46 @@
+/* App shell: header on top, sidebar + main below. */
+#app { display: flex; flex-direction: column; min-height: 100vh; }
+
+.app-header {
+  display: flex; align-items: center; gap: var(--sp-4);
+  height: 56px; padding: 0 var(--sp-5);
+  background: var(--bg); border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; z-index: 10;
+}
+.brand { font-weight: 800; font-size: 18px; color: var(--att-navy); display: flex; align-items: center; gap: 8px; }
+.brand-accent { color: var(--att-deep); }
+.brand-mark { width: 16px; height: 16px; border-radius: 4px; background: linear-gradient(135deg, var(--att), var(--att-deep)); transform: rotate(45deg); }
+.header-spacer { flex: 1; }
+.header-link { font-size: 18px; color: var(--muted); padding: 4px 8px; border-radius: var(--radius-sm); }
+.header-link:hover { background: var(--bg-alt); text-decoration: none; }
+.user-indicator { font-size: 13px; color: var(--ink-soft); padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; cursor: default; }
+
+.app-layout { display: flex; flex: 1; min-height: 0; }
+
+.sidebar {
+  width: 248px; flex: 0 0 248px;
+  background: var(--bg-sidebar); color: #cfe3f5;
+  padding: var(--sp-4) var(--sp-3); display: flex; flex-direction: column; gap: 2px;
+}
+.sidebar-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: #7fa8cf; padding: var(--sp-2) var(--sp-3); }
+.sidebar-spacer { flex: 1; }
+.nav-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 10px 12px; border-radius: var(--radius-sm); color: #dcebfa; color: #d7e6f5;
+  font-weight: 500; font-size: 14px;
+}
+.nav-item:hover { background: rgba(255,255,255,0.08); text-decoration: none; }
+.nav-item.active { background: var(--att-deep); color: #fff; }
+.nav-item.disabled { color: #7e9bb8; cursor: not-allowed; }
+.nav-item.disabled:hover { background: transparent; }
+
+.main { flex: 1; min-width: 0; padding: var(--sp-5) var(--sp-6); overflow-y: auto; }
+.view-head { margin-bottom: var(--sp-5); }
+.back-link { display: inline-block; margin-bottom: var(--sp-2); font-size: 13px; }
+
+@media (max-width: 900px) {
+  .app-layout { flex-direction: column; }
+  .sidebar { width: 100%; flex-direction: row; flex-wrap: wrap; }
+  .sidebar-spacer { display: none; }
+  .main { padding: var(--sp-4); }
+}

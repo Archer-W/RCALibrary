@@ -1,0 +1,17 @@
+meta:
+  id: test.valid-min
+  name: Valid Minimal
+data_pulls:
+  - id: d1
+    query: { dataset: ds1 }
+analysis:
+  - id: a1
+    analyzer: passthrough
+    inputs: { dataset: d1 }
+report:
+  panels:
+    - id: p1
+      type: table
+      title: A table
+      dataset: d1
+      analysis_ref: a1
