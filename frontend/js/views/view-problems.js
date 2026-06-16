@@ -30,30 +30,36 @@ async function renderCatalog(container) {
     grid.appendChild(el("p", { class: "muted" }, "No problems available yet."));
     return;
   }
+  // Badge color per workflow type (approach). Different hue for each level.
+  const WF_CLASS = {
+    fixed_workflow: "badge-wf-fixed",
+    langgraph_flow: "badge-wf-langgraph",
+    cli_agent: "badge-wf-cli",
+  };
+
   problems.forEach((p) => {
     const tags = (p.tags || []).length
-      ? el("div", { class: "problem-tags" }, ...p.tags.map((t) => el("span", { class: "tag" }, t)))
+      ? el("div", { class: "problem-tags" }, ...p.tags.map((t) => el("span", { class: "tag tag-grey" }, t)))
       : null;
 
     const templateBadges = (p.templates || []).length
       ? (p.templates || []).map((t) => {
           const available = t.status === "available";
+          const wf = WF_CLASS[t.approach_key] || "badge-approach";
           return el(
             "span",
             {
-              class: "badge badge-approach" + (available ? "" : " badge-muted"),
-              title: t.name + (available ? "" : " (coming soon)"),
+              class: "badge " + wf + (available ? "" : " badge-wf-soon"),
+              title: t.name + (available ? "" : " — coming soon"),
             },
-            t.approach_name
+            t.approach_name + (available ? "" : " · soon")
           );
         })
       : [el("span", { class: "muted small" }, "none yet")];
 
     grid.appendChild(
       el("a", { class: "problem-card", href: `#/problem/${encodeURIComponent(p.id)}` },
-        el("div", { class: "problem-card-head" },
-          el("h3", {}, p.name),
-          p.domain ? el("span", { class: "badge badge-domain" }, p.domain) : null),
+        el("div", { class: "problem-card-head" }, el("h3", {}, p.name)),
         tags,
         el("p", { class: "sol-desc" }, p.description),
         el("div", { class: "problem-templates" },

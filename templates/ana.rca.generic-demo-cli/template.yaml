@@ -1,0 +1,24 @@
+# Illustrative entry on the Demo problem — shows the CLI Super-Agent (level 3)
+# badge color in the problem catalog. The CLI solution isn't implemented yet, so
+# it renders as "coming soon" (disabled in the detail view). Safe to delete.
+meta:
+  id: ana.rca.generic-demo-cli
+  name: "Generic Demo (CLI Super-Agent)"
+  description: "Illustrative CLI Super-Agent entry for the Demo problem (badge-color demo)."
+  version: "0.1.0"
+  solution_level: 3
+  tags: [demo]
+  problem:
+    id: demo.generic
+    name: "Generic Demo Problem"
+    description: "A stand-in network problem used to exercise the engine end to end."
+    domain: "Demo"
+data_pulls: []
+analysis: []
+report:
+  panels:
+    - id: note
+      type: markdown
+      title: "CLI Super-Agent (demo)"
+      options:
+        text: "Illustrative entry to show the CLI Super-Agent badge color. The CLI agent (level 3) is not implemented yet."
