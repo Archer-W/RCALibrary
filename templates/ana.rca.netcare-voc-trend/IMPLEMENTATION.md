@@ -9,6 +9,23 @@ Read first: [docs/07-building-use-cases.md](../../docs/07-building-use-cases.md)
 (how to extend the framework via plugins), [docs/05-data-sources.md](../../docs/05-data-sources.md),
 and [docs/09-usecase-handoff.md](../../docs/09-usecase-handoff.md) (the ownership split).
 
+## The fixed-workflow triage (the process to implement)
+
+This template runs a fixed, ordered triage. Implement these as the `data_pulls` +
+`analysis` steps (structure first, real data later):
+
+1. **Trend look-up** — pull and characterize the VoC trend over the window.
+2. **Neighbor trend correlation** — compare against neighboring entities/areas.
+3. **Customer-complaint summary** — summarize the complaints driving the trend.
+4. **Known network-event search & ranking** — find and rank related known events.
+5. **Neighbor impact analysis** — assess impact on neighbors.
+6. **Conclusion & recommended next steps** — synthesize a result.
+
+Each step maps to one (or more) data pull(s) + analyzer(s), surfaced by report
+panel(s). The current panels (volume/breakdown) are provisional placeholders; the
+structure agent will reshape the report to the steps as they're defined —
+coordinate panel changes. Below is the contract for the placeholders shipping now.
+
 ## What you own in `template.yaml`
 - the `data_pulls:` block (real Snowflake datasets / SQL / params / filters)
 - the `analysis:` block (swap `passthrough` for your real analyzer names + params)

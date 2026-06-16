@@ -90,12 +90,28 @@ async function renderProblemDetail(container, problemId) {
     return;
   }
   head.querySelector(".problem-title").textContent = problem.name;
+  // Problem tags — same grey chips as the catalog (consistent across levels).
+  if ((problem.tags || []).length) {
+    head.appendChild(
+      el("div", { class: "problem-tags" }, ...problem.tags.map((t) => el("span", { class: "tag tag-grey" }, t)))
+    );
+  }
   if (problem.description) {
     head.appendChild(el("p", { class: "muted" }, problem.description));
   }
 
+  // Workflow-type color (matches the catalog badges).
+  const WF_CLASS = {
+    fixed_workflow: "badge-wf-fixed",
+    langgraph_flow: "badge-wf-langgraph",
+    cli_agent: "badge-wf-cli",
+  };
+
   problem.templates.forEach((t) => {
     const available = t.status === "available";
+    const wf = WF_CLASS[t.approach_key] || "badge-approach";
+    // The card's identity is the WORKFLOW TYPE (big tag); the description below
+    // describes the workflow solution, not the problem.
     const card = el(
       available ? "a" : "div",
       {
@@ -103,12 +119,10 @@ async function renderProblemDetail(container, problemId) {
         href: available ? `#/run/${encodeURIComponent(t.id)}` : null,
       },
       el("div", { class: "tmpl-card-head" },
-        el("span", { class: "badge badge-approach" }, t.approach_name),
+        el("span", { class: "wf-tag " + wf }, t.approach_name),
         el("span", { class: "badge " + (available ? "badge-ok" : "badge-soon") },
           available ? "Available" : "Coming soon")),
-      el("h3", {}, t.name),
-      el("p", { class: "tmpl-desc" }, t.description),
-      el("div", { class: "tmpl-tags" }, ...(t.tags || []).map((tag) => el("span", { class: "tag" }, tag)))
+      el("p", { class: "tmpl-desc" }, t.description)
     );
     grid.appendChild(card);
   });

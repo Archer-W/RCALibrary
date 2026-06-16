@@ -20,11 +20,14 @@
 meta:
   id: ana.rca.netcare-voc-trend
   name: "NetCare VoC Trend Triage"
+  # The TEMPLATE description describes the WORKFLOW SOLUTION (its fixed steps) —
+  # not the problem. The problem itself is described in meta.problem.description
+  # below. (Multiple templates for one problem each describe their own workflow.)
   description: >-
-    Triage a NetCare Voice-of-Customer (VoC) trend with automated RCA. A VoC
-    trend is a rise in customer-reported service issues — complaints surfaced
-    through customer-care calls and troubleshooting requests — and this workflow
-    helps pinpoint what is driving the increase.
+    Fixed, step-by-step triage of the trend: (1) trend look-up,
+    (2) neighbor trend correlation, (3) customer-complaint summary,
+    (4) known network-event search & ranking, (5) neighbor impact analysis, and
+    (6) conclusion with recommended next steps.
   version: "0.1.0"
   solution_level: 1
   tags: [voc, customer-care, triage]
@@ -94,15 +97,18 @@ data_pulls:
     columns: [category, complaint_count]      # contract the report below depends on
 
 # --- ANALYSIS  (data agent owns this block) — TODO ----------------------------
-# TODO(data agent): replace `passthrough` with real analyzers (implemented as
-#   plugins via @analyzer and loaded through RCA_PLUGINS). Suggested targets:
-#     * a trend/anomaly analyzer over voc_volume (e.g. baseline + spike detection)
-#       returning summary{...}, anomalies[...] (so the line chart shows markers),
-#       and annotations[...] (e.g. a baseline line).
-#     * a top-driver analyzer over voc_breakdown returning summary{...} and
-#       table[...] (top categories).
-#   Until then, `passthrough` keeps the template valid & visible (summary.row_count).
-#   See IMPLEMENTATION.md for the exact contract the report expects.
+# Planned fixed-workflow triage (the steps to implement next, structure first /
+# data later):
+#   1. Trend look-up
+#   2. Neighbor trend correlation
+#   3. Customer-complaint summary
+#   4. Known network-event search & ranking
+#   5. Neighbor impact analysis
+#   6. Conclusion & recommended next steps
+# Each step becomes one (or more) analyzer(s) over its data_pull, implemented as
+# plugins via @analyzer (loaded through RCA_PLUGINS), with report panels updated
+# to surface each step. Until then, `passthrough` keeps the template valid &
+# visible. See IMPLEMENTATION.md for the contract.
 analysis:
   - id: volume_trend
     analyzer: passthrough                     # TODO: e.g. voc_trend_anomaly
@@ -122,12 +128,15 @@ report:
   panels:
     - id: pending_note
       type: markdown
-      title: "Status"
+      title: "Workflow"
       options:
         text: >-
-          Structure scaffolded. Snowflake data pulls and analysis logic are
-          placeholders — see IMPLEMENTATION.md. Running this template will error
-          until the data agent wires Snowflake + analyzers.
+          Fixed-workflow triage: trend look-up → neighbor trend correlation →
+          customer-complaint summary → known network-event search & ranking →
+          neighbor impact analysis → conclusion & recommended next steps.
+          Structure scaffolded; Snowflake data pulls and per-step analysis are
+          placeholders (see IMPLEMENTATION.md). Running errors until the data
+          agent wires Snowflake + analyzers.
     - id: volume_kpi
       type: stat
       title: "VoC volume (window)"

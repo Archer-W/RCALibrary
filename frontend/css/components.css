@@ -52,7 +52,11 @@
 
 /* Template (approach) card header */
 .tmpl-card.disabled { opacity: 0.6; cursor: not-allowed; }
-.tmpl-card-head { display: flex; align-items: center; gap: 6px; margin-bottom: var(--sp-2); }
+.tmpl-card-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: var(--sp-2); }
+/* The card identity is the workflow type, shown as a prominent colored pill
+   (color classes badge-wf-* are shared with the catalog badges). */
+.wf-tag { font-size: 14px; font-weight: 800; padding: 6px 14px; border-radius: 999px; }
+.tmpl-card .tmpl-desc { margin-bottom: 0; }
 
 /* Badges */
 .badge { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
