@@ -32,6 +32,14 @@
 .problem-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .small { font-size: 12px; }
 
+/* Problem tags — separate chips stacked UNDER the problem name (wrap as needed). */
+.problem-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 4px; }
+
+/* Bottom of the card: which templates are available, shown as badges. */
+.problem-templates { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.problem-templates-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.badge-muted { background: var(--bg-alt); color: var(--muted); border: 1px solid var(--line); }
+
 /* Template (approach) card header */
 .tmpl-card.disabled { opacity: 0.6; cursor: not-allowed; }
 .tmpl-card-head { display: flex; align-items: center; gap: 6px; margin-bottom: var(--sp-2); }

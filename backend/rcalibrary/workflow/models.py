@@ -141,6 +141,7 @@ class ProblemRef(BaseModel):
     name: str
     description: str = ""
     domain: str = ""  # e.g. RAN, Core, Transport, Demo
+    tags: list[str] = Field(default_factory=list)  # descriptive labels shown on the problem card
 
 
 class TemplateMeta(BaseModel):

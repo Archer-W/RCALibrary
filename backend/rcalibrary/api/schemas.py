@@ -40,6 +40,7 @@ class ProblemSummary(BaseModel):
     name: str
     description: str = ""
     domain: str = ""
+    tags: list[str] = Field(default_factory=list)
     templates: list[ApproachTemplate] = Field(default_factory=list)
 
 

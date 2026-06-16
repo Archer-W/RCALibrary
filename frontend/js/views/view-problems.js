@@ -31,14 +31,34 @@ async function renderCatalog(container) {
     return;
   }
   problems.forEach((p) => {
-    const n = p.templates.length;
+    const tags = (p.tags || []).length
+      ? el("div", { class: "problem-tags" }, ...p.tags.map((t) => el("span", { class: "tag" }, t)))
+      : null;
+
+    const templateBadges = (p.templates || []).length
+      ? (p.templates || []).map((t) => {
+          const available = t.status === "available";
+          return el(
+            "span",
+            {
+              class: "badge badge-approach" + (available ? "" : " badge-muted"),
+              title: t.name + (available ? "" : " (coming soon)"),
+            },
+            t.approach_name
+          );
+        })
+      : [el("span", { class: "muted small" }, "none yet")];
+
     grid.appendChild(
       el("a", { class: "problem-card", href: `#/problem/${encodeURIComponent(p.id)}` },
         el("div", { class: "problem-card-head" },
           el("h3", {}, p.name),
           p.domain ? el("span", { class: "badge badge-domain" }, p.domain) : null),
+        tags,
         el("p", { class: "sol-desc" }, p.description),
-        el("div", { class: "muted small" }, `${n} template${n === 1 ? "" : "s"} available`))
+        el("div", { class: "problem-templates" },
+          el("span", { class: "problem-templates-label" }, "Templates:"),
+          ...templateBadges))
     );
   });
 }

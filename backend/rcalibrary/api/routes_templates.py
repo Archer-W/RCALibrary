@@ -41,7 +41,13 @@ def list_problems(
                 name=prob.name if prob else t.meta.name,
                 description=prob.description if prob else t.meta.description,
                 domain=prob.domain if prob else "",
+                tags=list(prob.tags) if prob else [],
             )
+        elif prob:
+            # Multiple templates can share a problem — union their tags (dedup, ordered).
+            for tag in prob.tags:
+                if tag not in groups[pid].tags:
+                    groups[pid].tags.append(tag)
         groups[pid].templates.append(_approach(t, solutions))
     return [groups[k] for k in sorted(groups)]
 

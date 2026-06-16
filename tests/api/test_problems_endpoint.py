@@ -16,3 +16,11 @@ def test_problems_group_templates_with_approach(client):
 def test_template_detail_includes_problem(client):
     detail = client.get("/api/templates/ana.rca.generic-demo").json()
     assert detail["meta"]["problem"]["id"] == "demo.generic"
+
+
+def test_problem_carries_tags(client):
+    problems = client.get("/api/problems").json()
+    voc = next(p for p in problems if p["id"] == "netcare.voc-trend")
+    assert voc["tags"] == ["customer care", "voc trend", "mobility service issue"]
+    # templates are present so the card can render them as badges (not a count)
+    assert [t["approach_name"] for t in voc["templates"]] == ["Fixed Workflow"]

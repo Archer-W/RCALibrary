@@ -35,6 +35,7 @@ meta:
       Investigate an increase in NetCare Voice-of-Customer complaints (customer-care
       calls and troubleshooting requests) and identify the likely drivers.
     domain: "Customer Care / VoC"
+    tags: ["customer care", "voc trend", "mobility service issue"]
 
 # --- STRUCTURE (framework/structure agent owns this block) -------------------
 # Provisional input set — finalize when workflow details are provided.
