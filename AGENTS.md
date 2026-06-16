@@ -17,35 +17,49 @@ real data connectivity, custom analysis, and real authentication live in a
 
 ## Two agents, two responsibilities
 
-| | **Framework agent** (this repo) | **Use-case agent** (separate private repo) |
-|---|---|---|
-| Owns | The generic platform | The real, specific use cases |
-| Deliverables | Engine, UI, viz library, data-source/analyzer/auth **interfaces**, plugin seams, docs | RCA **problems + templates**, custom **analyzers**, real **data sources** (Snowflake/DB), report **composition**, **authentication** |
-| Repo | `RCALibrary` (public) | their private repo, with this repo as a **git submodule** |
-| Visibility | Cannot read the use-case repo | Can read/clone this framework repo |
+The durable split is **by what you touch, not by repo**: the *structure /
+framework agent* owns the generic platform and the **structure** of templates;
+the *data / analysis agent* owns the **real data + analysis** and authentication.
 
-You are the **framework agent**. The use-case agent extends the framework
-**without editing any file in this repo** — via plugins + config + their own
-template/data dirs. See [docs/08-collaboration-and-branching.md](docs/08-collaboration-and-branching.md).
+| | **Structure / framework agent** (you) | **Data / analysis agent** |
+|---|---|---|
+| Owns | the generic platform + template **structure** | the real **data + analysis** |
+| Deliverables | engine, UI, viz library, data-source/analyzer/auth **interfaces** + plugin seams, docs; **problem definitions + template structure** (`meta`, `inputs`, `report` layout) | real **data sources** (Snowflake/DB), real **analyzers**, the `data_pulls` + `analysis` blocks of templates, **authentication** |
+
+**Where use-case artifacts live — two patterns:**
+1. **Co-located skeleton (in this repo).** The structure agent scaffolds a
+   problem/template skeleton here; the data agent fills the `data_pulls` +
+   `analysis` blocks (and ships analyzers/data-source/auth as plugins). Locking is
+   **in-file** — ownership-banner comments in the YAML — plus a per-template
+   `IMPLEMENTATION.md` handoff brief. Used by
+   [`templates/ana.rca.netcare-voc-trend/`](templates/ana.rca.netcare-voc-trend/).
+   See [docs/09-usecase-handoff.md](docs/09-usecase-handoff.md). (Trade-off: both
+   agents edit one repo, so there is no hard one-way visibility — the lock is by
+   convention + review, not by repo isolation.)
+2. **Separate private repo (submodule).** For fully-private use cases, the data
+   agent works in their own repo with this framework as a **git submodule** and
+   never edits this repo (true one-way isolation). See
+   [docs/08-collaboration-and-branching.md](docs/08-collaboration-and-branching.md).
+
+Either way, **framework code never imports use-case code** — analyzers, data
+sources, and auth are discovered via the extension API + config, so a deployment
+missing a plugin simply **skips** templates that need it (it never crashes).
 
 ## Ownership & locking (what each agent may touch)
 
-**Framework-owned — only the framework agent edits these (in this repo):**
-- `backend/rcalibrary/**` — all framework code (engine, registries, API, interfaces, plugin loader)
-- `frontend/**` — the UI and the Plotly panel library
-- `docs/**`, `AGENTS.md`, `CODEOWNERS`, `pyproject.toml`, `requirements.txt`, `run.sh`
-- `examples/**` — reference scaffolding for the use-case agent
-- `templates/ana.rca.generic-demo/**`, `data/samples/ana.rca.generic-demo/**` — the demo only
+**Structure / framework agent — owns (in this repo):**
+- `backend/rcalibrary/**`, `frontend/**` — all framework code, the UI, the viz library
+- `docs/**`, `AGENTS.md`, `CODEOWNERS`, `pyproject.toml`, `requirements.txt`, `run.sh`, `examples/**`
+- each template's **structure** blocks — `meta` (incl. the `problem` definition), `inputs`, `report` (panel layout)
 
-**Use-case-owned — created in the SEPARATE use-case repo, never here:**
-- their RCA problems + templates (their own `templates/` dir → `RCA_TEMPLATES_DIR`)
-- their sample/real data (their `data/` dir → `RCA_SAMPLES_DIR`, or a real data source)
-- their plugin package: custom analyzers, data sources, auth provider (→ `RCA_PLUGINS`)
-- their custom panel JS, if any (→ `RCA_FRONTEND_EXT_DIR`, served at `/ext`)
+**Data / analysis agent — owns:**
+- each template's `data_pulls` and `analysis` blocks (marked with `# ===== … =====` banners in the YAML)
+- analyzer functions, real data-source providers, the auth provider — as **plugins** (`RCA_PLUGINS`), co-located here or in a separate private repo
+- credentials/queries live in env or the plugin, **never hard-coded** in templates
 
-The lock is enforced structurally: **framework code never imports use-case code**
-— it only discovers it through config + the extension API. So the two repos never
-edit each other's files.
+Changing the *other* agent's block — e.g. a `data_pull` id or column the `report`
+depends on — requires coordination (the YAML banners + `IMPLEMENTATION.md` spell
+out the contract).
 
 ## How the use-case agent extends the framework (no framework edits)
 
@@ -77,13 +91,15 @@ field)?** That's a request to the framework agent — don't fork-edit the framew
 ## Where to start
 - Framework internals → [docs/03-architecture.md](docs/03-architecture.md)
 - Building real use cases → [docs/07-building-use-cases.md](docs/07-building-use-cases.md)
+- **Structure↔data/analysis handoff (co-located skeletons)** → [docs/09-usecase-handoff.md](docs/09-usecase-handoff.md)
 - Repo/branch model & ownership → [docs/08-collaboration-and-branching.md](docs/08-collaboration-and-branching.md)
 - Which RCA solution level for which problem → [docs/02-decision-framework.md](docs/02-decision-framework.md)
-- A copy-paste starter for the use-case repo → [examples/usecase-starter/](examples/usecase-starter/)
+- A copy-paste starter for a separate use-case repo → [examples/usecase-starter/](examples/usecase-starter/)
+- First real problem (worked skeleton + handoff) → [templates/ana.rca.netcare-voc-trend/](templates/ana.rca.netcare-voc-trend/)
 
 ## Run it
 ```bash
 pip install -r requirements.txt
 ./run.sh            # http://localhost:8000  (RCA_PORT to change port)
-pytest              # 31 tests
+pytest              # test suite
 ```

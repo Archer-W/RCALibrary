@@ -7,6 +7,11 @@ stepping on each other, given the required one-way boundary:
 > read the use-case repo. Real data, real RCA logic, and credentials must stay
 > out of the public framework repo.
 
+> **Not always needed.** If one-way isolation isn't required, you can instead keep
+> a use case **co-located in this repo** and split the work *within the template*
+> (structure vs data/analysis) — see [docs/09-usecase-handoff.md](09-usecase-handoff.md).
+> This page covers the stricter separate-repo model.
+
 ## Two repos (not two branches)
 
 Branches in a single repo are mutually readable, so they can't give a one-way

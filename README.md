@@ -74,7 +74,9 @@ framework file. **Start at [AGENTS.md](AGENTS.md).**
 - [06 — Testing](docs/06-testing.md)
 - [07 — Building real use cases](docs/07-building-use-cases.md)
 - [08 — Collaboration, repos & branching](docs/08-collaboration-and-branching.md)
-- [examples/usecase-starter/](examples/usecase-starter/) — copy-paste scaffold for the use-case repo
+- [09 — Structure ↔ data/analysis handoff (co-located skeletons)](docs/09-usecase-handoff.md)
+- [examples/usecase-starter/](examples/usecase-starter/) — copy-paste scaffold for a separate use-case repo
+- [templates/ana.rca.netcare-voc-trend/](templates/ana.rca.netcare-voc-trend/) — first real problem (skeleton + handoff brief)
 
 ## Tests
 

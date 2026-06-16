@@ -1,0 +1,154 @@
+# =============================================================================
+# NetCare VoC Trend Triage — fixed-workflow template (SKELETON)
+#
+# OWNERSHIP (see ../../docs/09-usecase-handoff.md):
+#   * STRUCTURE  (meta / inputs / report)  -> framework/structure agent  [DONE]
+#   * DATA+LOGIC (data_pulls / analysis)   -> data agent                 [TODO]
+#
+# This skeleton is intentionally runnable-as-structure only:
+#   - data_pulls target Snowflake (source: snowflake) but the real datasets/SQL
+#     are placeholders — running it errors until the data agent implements the
+#     Snowflake provider + queries (see IMPLEMENTATION.md).
+#   - analysis uses the built-in `passthrough` as a stand-in so the template
+#     LOADS and APPEARS in the UI now; the data agent replaces it with real
+#     analyzers.
+#
+# NOTE: workflow specifics (exact inputs, datasets, analysis, panels) are
+# provisional — finalize when the detailed workflow definition is provided.
+# =============================================================================
+
+meta:
+  id: ana.rca.netcare-voc-trend
+  name: "NetCare VoC Trend Triage"
+  description: >-
+    Triage a NetCare Voice-of-Customer (VoC) trend with automated RCA. A VoC
+    trend is a rise in customer-reported service issues — complaints surfaced
+    through customer-care calls and troubleshooting requests — and this workflow
+    helps pinpoint what is driving the increase.
+  version: "0.1.0"
+  solution_level: 1
+  tags: [voc, customer-care, triage]
+  problem:
+    id: netcare.voc-trend
+    name: "NetCare VoC Trend Triage"
+    description: >-
+      Investigate an increase in NetCare Voice-of-Customer complaints (customer-care
+      calls and troubleshooting requests) and identify the likely drivers.
+    domain: "Customer Care / VoC"
+
+# --- STRUCTURE (framework/structure agent owns this block) -------------------
+# Provisional input set — finalize when workflow details are provided.
+inputs:
+  - name: start_date
+    label: "Start date"
+    type: date
+    required: true
+    help: "Beginning of the analysis window."
+  - name: end_date
+    label: "End date"
+    type: date
+    required: true
+    help: "End of the analysis window."
+  - name: region
+    label: "Region / market"
+    type: string
+    required: false
+    help: "Optional scope filter (leave blank for all)."
+  - name: product_line
+    label: "Product line"
+    type: string
+    required: false
+    help: "Optional scope filter (leave blank for all)."
+
+# --- DATA  (data agent owns this block) — TODO --------------------------------
+# TODO(data agent): replace these placeholders with real Snowflake datasets/SQL.
+#   * Implement a Snowflake DataSource (provider name "snowflake") as a plugin and
+#     set RCA_DATASOURCE=snowflake. See ../../docs/05-data-sources.md and
+#     ../../docs/07-building-use-cases.md (section 3), and IMPLEMENTATION.md.
+#   * Map each `query.dataset` below to a real view/table (or use `sql:` with
+#     named binds). Keep the data_pull `id`s and the documented columns stable so
+#     the report (structure) keeps working — coordinate before changing them.
+data_pulls:
+  - id: voc_volume
+    source: snowflake
+    query:
+      dataset: voc_complaint_volume          # TODO: real Snowflake view/table
+      params:
+        start_date: "${input.start_date}"
+        end_date: "${input.end_date}"
+        region: "${input.region}"
+        product_line: "${input.product_line}"
+      # filters: []                           # TODO: add neutral filters if not using params
+    columns: [date, complaint_count]          # contract the report below depends on
+
+  - id: voc_breakdown
+    source: snowflake
+    query:
+      dataset: voc_complaint_breakdown        # TODO: real Snowflake view/table
+      params:
+        start_date: "${input.start_date}"
+        end_date: "${input.end_date}"
+        region: "${input.region}"
+        product_line: "${input.product_line}"
+    columns: [category, complaint_count]      # contract the report below depends on
+
+# --- ANALYSIS  (data agent owns this block) — TODO ----------------------------
+# TODO(data agent): replace `passthrough` with real analyzers (implemented as
+#   plugins via @analyzer and loaded through RCA_PLUGINS). Suggested targets:
+#     * a trend/anomaly analyzer over voc_volume (e.g. baseline + spike detection)
+#       returning summary{...}, anomalies[...] (so the line chart shows markers),
+#       and annotations[...] (e.g. a baseline line).
+#     * a top-driver analyzer over voc_breakdown returning summary{...} and
+#       table[...] (top categories).
+#   Until then, `passthrough` keeps the template valid & visible (summary.row_count).
+#   See IMPLEMENTATION.md for the exact contract the report expects.
+analysis:
+  - id: volume_trend
+    analyzer: passthrough                     # TODO: e.g. voc_trend_anomaly
+    inputs: { dataset: voc_volume }
+    params: {}                                # TODO: thresholds / baseline window
+  - id: breakdown_summary
+    analyzer: passthrough                     # TODO: e.g. voc_top_drivers
+    inputs: { dataset: voc_breakdown }
+    params: {}
+
+# --- STRUCTURE (framework/structure agent owns this block) -------------------
+# Report layout is provisional; encodings reference the documented data columns
+# and analysis-summary keys. When the data agent finalizes analyzers, update the
+# `encoding.value` keys to the real summary fields (coordinate the change).
+report:
+  title: "NetCare VoC Trend Triage"
+  panels:
+    - id: pending_note
+      type: markdown
+      title: "Status"
+      options:
+        text: >-
+          Structure scaffolded. Snowflake data pulls and analysis logic are
+          placeholders — see IMPLEMENTATION.md. Running this template will error
+          until the data agent wires Snowflake + analyzers.
+    - id: volume_kpi
+      type: stat
+      title: "VoC volume (window)"
+      analysis_ref: volume_trend
+      encoding: { value: row_count }          # TODO: real metric, e.g. total_complaints
+      options: { unit: complaints }
+    - id: volume_trend_chart
+      type: line
+      title: "VoC complaint volume over time"
+      dataset: voc_volume
+      analysis_ref: volume_trend              # anomalies/baseline overlaid once implemented
+      encoding: { x: date, y: complaint_count }
+      options: { x_title: "Date", y_title: "Complaints" }
+    - id: breakdown_chart
+      type: bar
+      title: "Complaints by category"
+      dataset: voc_breakdown
+      analysis_ref: breakdown_summary
+      encoding: { x: category, y: complaint_count }
+      options: { x_title: "Category", y_title: "Complaints" }
+    - id: drivers_table
+      type: table
+      title: "Top drivers"
+      analysis_ref: breakdown_summary
+      encoding: { columns: [category, complaint_count] }
