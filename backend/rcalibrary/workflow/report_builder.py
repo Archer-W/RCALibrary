@@ -89,7 +89,10 @@ def _build_panel(
     elif ptype == "heatmap":
         _fill_heatmap(spec, datasets, panel)
     elif ptype == "markdown":
-        panel.markdown = str(spec.options.get("text", spec.title))
+        # Text can come from an analysis result (analysis_ref + encoding.value)
+        # or fall back to a static options.text.
+        text = ar.summary.get(spec.encoding.value) if (ar and spec.encoding.value) else None
+        panel.markdown = text if text is not None else str(spec.options.get("text", spec.title))
     return panel
 
 
@@ -159,13 +162,14 @@ def _fill_table(spec, datasets, ar, panel) -> None:
 
 
 def _fill_stat(spec, ar, panel) -> None:
-    value = None
-    if ar and spec.encoding.value:
-        value = ar.summary.get(spec.encoding.value)
+    summary = ar.summary if ar else {}
+    enc = spec.encoding
     panel.stat = StatData(
         label=spec.title,
-        value=_py(value),
+        value=_py(summary.get(enc.value)) if enc.value else None,
         unit=spec.options.get("unit"),
+        state=summary.get(enc.state) if enc.state else None,
+        sub=summary.get(enc.sub) if enc.sub else None,
     )
     if ar and ar.anomalies:
         panel.anomalies = AnomalyHighlight(severity_counts=_count_severity(ar.anomalies))

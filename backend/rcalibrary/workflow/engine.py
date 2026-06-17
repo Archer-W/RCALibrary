@@ -99,6 +99,7 @@ class TemplateEngine:
                 ],
                 limit=q.limit,
                 columns=pull.columns,
+                string_columns=q.string_columns,
                 namespace=template.meta.id,
             )
             provider = self.datasources.get(pull.source)

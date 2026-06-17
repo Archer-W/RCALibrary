@@ -44,6 +44,8 @@ class StatData(BaseModel):
     unit: str | None = None
     delta: float | None = None
     delta_dir: Literal["up", "down"] | None = None
+    state: Literal["good", "bad", "neutral"] | None = None  # colors the value
+    sub: str | None = None  # secondary line under the value
 
 
 class PanelPayload(BaseModel):

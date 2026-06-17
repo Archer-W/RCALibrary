@@ -29,6 +29,8 @@ class DataPullRequest(BaseModel):
     filters: list[NeutralFilter] = Field(default_factory=list)
     limit: int | None = None
     columns: list[str] | None = None
+    # Columns to force to string (e.g. IDs with leading zeros).
+    string_columns: list[str] | None = None
     # Sample-provider convenience: subdir under the samples dir (= template id).
     # Real providers (Snowflake) ignore this.
     namespace: str | None = None

@@ -2,7 +2,8 @@
 // Supports a flat `inputs` list OR `input_groups` (mutually-exclusive sets the
 // user chooses between; only the active set is submitted, with its group key).
 import { el, mount } from "../core/dom.js";
-import { createField, mdInline } from "./form-fields.js";
+import { createField } from "./form-fields.js";
+import { mdInline } from "../core/format.js";
 import { validateField } from "./form-validate.js";
 
 // Unique radio-group name per rendered form (radios group by name document-wide).

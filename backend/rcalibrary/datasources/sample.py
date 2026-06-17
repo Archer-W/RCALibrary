@@ -47,8 +47,9 @@ class SampleDataProvider(DataSource):
         if not request.dataset:
             raise DataSourceError("SampleDataProvider requires a 'dataset' name (got SQL or empty).")
         path = self._resolve_path(request.dataset, request.namespace)
+        dtype = {c: str for c in (request.string_columns or [])}
         try:
-            frame = pd.read_csv(path)
+            frame = pd.read_csv(path, dtype=dtype or None)
         except Exception as exc:  # noqa: BLE001
             raise DataSourceError(f"Failed to read sample dataset '{request.dataset}': {exc}") from exc
 

@@ -1,5 +1,6 @@
 // One control factory per input type. Each returns { wrapper, input, read, setError, spec }.
 import { el } from "../core/dom.js";
+import { mdInline } from "../core/format.js";
 
 const HTML_TYPE = {
   int: "number",
@@ -8,15 +9,6 @@ const HTML_TYPE = {
   datetime: "datetime-local",
   string: "text",
 };
-
-// Minimal, safe inline formatter for help text: escape HTML, then **x** -> <strong>x</strong>.
-export function mdInline(s) {
-  const esc = String(s)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-  return esc.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-}
 
 export function createField(spec, idPrefix = "") {
   // idPrefix keeps ids unique when the same field name appears in multiple

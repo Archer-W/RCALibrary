@@ -4,9 +4,9 @@ from rcalibrary.deps import get_engine, get_template_registry
 from rcalibrary.errors import InputValidationError
 
 
-def test_voc_template_has_three_groups():
+def test_voc_template_has_two_groups():
     template = get_template_registry().get("ana.rca.netcare-voc-trend")
-    assert [g.key for g in template.input_groups] == ["trend_id", "usid_date", "incident_id"]
+    assert [g.key for g in template.input_groups] == ["trend_id", "usid_date"]
     assert template.inputs == []  # uses groups, not a flat list
 
 

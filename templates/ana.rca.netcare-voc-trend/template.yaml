@@ -1,28 +1,22 @@
 # =============================================================================
-# NetCare VoC Trend Triage — fixed-workflow template (SKELETON)
+# NetCare VoC Trend Triage — fixed-workflow template
 #
 # OWNERSHIP (see ../../docs/09-usecase-handoff.md):
-#   * STRUCTURE  (meta / inputs / report)  -> framework/structure agent  [DONE]
-#   * DATA+LOGIC (data_pulls / analysis)   -> data agent                 [TODO]
+#   * STRUCTURE (meta / input_groups / report) -> structure agent
+#   * ANALYSIS LOGIC (the voc_collect_trend analyzer) -> usecases/netcare_voc.py
+#   * DATA SOURCE -> data agent's swap point: dummy CSV via the sample provider
+#     now; real Snowflake later. See IMPLEMENTATION.md.
 #
-# This skeleton is intentionally runnable-as-structure only:
-#   - data_pulls target Snowflake (source: snowflake) but the real datasets/SQL
-#     are placeholders — running it errors until the data agent implements the
-#     Snowflake provider + queries (see IMPLEMENTATION.md).
-#   - analysis uses the built-in `passthrough` as a stand-in so the template
-#     LOADS and APPEARS in the UI now; the data agent replaces it with real
-#     analyzers.
-#
-# NOTE: workflow specifics (exact inputs, datasets, analysis, panels) are
-# provisional — finalize when the detailed workflow definition is provided.
+# STATUS: Step 1 (collect trend information) is implemented and runs against the
+# bundled dummy data (data/samples/ana.rca.netcare-voc-trend/voc_trends.csv).
+# Steps 2-6 are not built yet.
 # =============================================================================
 
 meta:
   id: ana.rca.netcare-voc-trend
   name: "NetCare VoC Trend Triage"
   # The TEMPLATE description describes the WORKFLOW SOLUTION (its fixed steps) —
-  # not the problem. The problem itself is described in meta.problem.description
-  # below. (Multiple templates for one problem each describe their own workflow.)
+  # not the problem (which lives in meta.problem.description below).
   description: >-
     Fixed, step-by-step triage of the trend: (1) trend look-up,
     (2) neighbor trend correlation, (3) customer-complaint summary,
@@ -40,10 +34,10 @@ meta:
     domain: "Customer Care / VoC"
     tags: ["customer care", "voc trend", "mobility service issue"]
 
-# --- STRUCTURE (framework/structure agent owns this block) -------------------
-# Three mutually-exclusive input sets — the user picks ONE to start the lookup.
-# The chosen set's key (input_group) determines the workflow's starting point
-# (branching logic TBD; available to the data layer as ${input._input_group}).
+# --- STRUCTURE (structure agent) ---------------------------------------------
+# Two mutually-exclusive input sets — the user picks ONE to start the lookup.
+# The chosen set's key (input_group) determines Step 1's lookup path; it reaches
+# the analyzer as ${input._input_group}.
 input_groups:
   - key: trend_id
     label: "GSA / NetCare Trend ID"
@@ -53,7 +47,7 @@ input_groups:
         type: string
         required: true
         help: "the **USID-level** trend ID of a GSA trend or NetCare Trend"
-        placeholder: "e.g. GSA-0123456789"
+        placeholder: "e.g. T-1001"
 
   - key: usid_date
     label: "USID + Date"
@@ -76,115 +70,53 @@ input_groups:
         default: true
         help: "whether to look up possible trends in the neighborhood (recommended)"
 
-  - key: incident_id
-    label: "Incident ID"
-    inputs:
-      - name: incident_id
-        label: "Incident ID"
-        type: string
-        required: true
-        help: "the **USID-Cluster-level** trend ID of a NetCare VoC incident"
-        placeholder: "e.g. INC-0123456"
-
-# --- DATA  (data agent owns this block) — TODO --------------------------------
-# TODO(data agent): replace these placeholders with real Snowflake datasets/SQL.
-#   * Implement a Snowflake DataSource (provider name "snowflake") as a plugin and
-#     set RCA_DATASOURCE=snowflake. See ../../docs/05-data-sources.md and
-#     ../../docs/07-building-use-cases.md (section 3), and IMPLEMENTATION.md.
-#   * Map each `query.dataset` below to a real view/table (or use `sql:` with
-#     named binds). Keep the data_pull `id`s and the documented columns stable so
-#     the report (structure) keeps working — coordinate before changing them.
-#   * Only the chosen input set's fields are populated; `_input_group` says which
-#     set was used (trend_id | usid_date | incident_id). Per-set query logic /
-#     workflow starting point is TBD — branch on _input_group.
+# --- DATA (data agent's swap point) ------------------------------------------
+# Now: the sample provider serves the dummy CSV `voc_trends` (the whole small
+# table is fetched and the analyzer does the lookup).
+# Real data: implement the Snowflake provider, set source: snowflake (or
+# RCA_DATASOURCE=snowflake), and push the per-input_group filtering into SQL
+# using ${input._input_group} + the set's fields. See IMPLEMENTATION.md.
 data_pulls:
-  - id: voc_volume
-    source: snowflake
+  - id: trends
+    # source omitted -> active data source (sample = dummy CSV now).
     query:
-      dataset: voc_complaint_volume          # TODO: real Snowflake view/table
-      params:
-        input_group: "${input._input_group}"
-        trend_id: "${input.trend_id}"
-        usid: "${input.usid}"
-        date: "${input.date}"
-        search_neighbors: "${input.search_neighbors}"
-        incident_id: "${input.incident_id}"
-    columns: [date, complaint_count]          # contract the report below depends on
+      dataset: voc_trends
+      string_columns: [usid, trend_id]   # IDs are strings (USID has leading zeros)
+      # No params/filters for the dummy pull (analyzer filters the small table).
+      # Real Snowflake should filter in SQL by trend_id OR usid+date per input set.
 
-  - id: voc_breakdown
-    source: snowflake
-    query:
-      dataset: voc_complaint_breakdown        # TODO: real Snowflake view/table
-      params:
-        input_group: "${input._input_group}"
-        trend_id: "${input.trend_id}"
-        usid: "${input.usid}"
-        incident_id: "${input.incident_id}"
-    columns: [category, complaint_count]      # contract the report below depends on
-
-# --- ANALYSIS  (data agent owns this block) — TODO ----------------------------
-# Planned fixed-workflow triage (the steps to implement next, structure first /
-# data later):
-#   1. Trend look-up
-#   2. Neighbor trend correlation
-#   3. Customer-complaint summary
-#   4. Known network-event search & ranking
-#   5. Neighbor impact analysis
-#   6. Conclusion & recommended next steps
-# Each step becomes one (or more) analyzer(s) over its data_pull, implemented as
-# plugins via @analyzer (loaded through RCA_PLUGINS), with report panels updated
-# to surface each step. Until then, `passthrough` keeps the template valid &
-# visible. See IMPLEMENTATION.md for the contract.
+# --- ANALYSIS ----------------------------------------------------------------
+# Planned fixed-workflow triage:
+#   1. Trend look-up                         <- IMPLEMENTED (voc_collect_trend)
+#   2. Neighbor trend correlation            <- TODO
+#   3. Customer-complaint summary            <- TODO
+#   4. Known network-event search & ranking  <- TODO
+#   5. Neighbor impact analysis              <- TODO
+#   6. Conclusion & recommended next steps   <- TODO
+# Step 1 branches on _input_group, reports the trend (or a set-specific
+# not-found message), and always reports table freshness. Logic lives in
+# usecases/netcare_voc.py (loaded via RCA_PLUGINS).
 analysis:
-  - id: volume_trend
-    analyzer: passthrough                     # TODO: e.g. voc_trend_anomaly
-    inputs: { dataset: voc_volume }
-    params: {}                                # TODO: thresholds / baseline window
-  - id: breakdown_summary
-    analyzer: passthrough                     # TODO: e.g. voc_top_drivers
-    inputs: { dataset: voc_breakdown }
+  - id: collect_trend
+    analyzer: voc_collect_trend
+    inputs: { dataset: trends }
     params: {}
 
-# --- STRUCTURE (framework/structure agent owns this block) -------------------
-# Report layout is provisional; encodings reference the documented data columns
-# and analysis-summary keys. When the data agent finalizes analyzers, update the
-# `encoding.value` keys to the real summary fields (coordinate the change).
+# --- STRUCTURE (structure agent) ---------------------------------------------
 report:
-  title: "NetCare VoC Trend Triage"
+  title: "NetCare VoC Trend Triage — Step 1: Collect trend information"
   panels:
-    - id: pending_note
-      type: markdown
-      title: "Workflow"
-      options:
-        text: >-
-          Fixed-workflow triage: trend look-up → neighbor trend correlation →
-          customer-complaint summary → known network-event search & ranking →
-          neighbor impact analysis → conclusion & recommended next steps.
-          Structure scaffolded; Snowflake data pulls and per-step analysis are
-          placeholders (see IMPLEMENTATION.md). Running errors until the data
-          agent wires Snowflake + analyzers.
-    - id: volume_kpi
+    # Always shown: table freshness as a data-quality indicator (red if > 6h late).
+    - id: data_freshness
       type: stat
-      title: "VoC volume (window)"
-      analysis_ref: volume_trend
-      encoding: { value: row_count }          # TODO: real metric, e.g. total_complaints
-      options: { unit: complaints }
-    - id: volume_trend_chart
-      type: line
-      title: "VoC complaint volume over time"
-      dataset: voc_volume
-      analysis_ref: volume_trend              # anomalies/baseline overlaid once implemented
-      encoding: { x: date, y: complaint_count }
-      options: { x_title: "Date", y_title: "Complaints" }
-    - id: breakdown_chart
-      type: bar
-      title: "Complaints by category"
-      dataset: voc_breakdown
-      analysis_ref: breakdown_summary
-      encoding: { x: category, y: complaint_count }
-      options: { x_title: "Category", y_title: "Complaints" }
-    - id: drivers_table
-      type: table
-      title: "Top drivers"
-      analysis_ref: breakdown_summary
-      encoding: { columns: [category, complaint_count] }
+      title: "Table data freshness"
+      analysis_ref: collect_trend
+      encoding: { value: delay_hours, state: delay_state, sub: table_updated }
+      options: { unit: "h behind" }
+    # The found trend (Trend ID, USID, start time, status, last update) or, if not
+    # found, a set-specific message (the RCA flow stops here on not-found).
+    - id: trend_info
+      type: markdown
+      title: "Trend"
+      analysis_ref: collect_trend
+      encoding: { value: trend_md }

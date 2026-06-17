@@ -5,8 +5,8 @@ description = "Automated network-issue Root Cause Analysis — Level-1 fixed-wor
 requires-python = ">=3.10"
 
 [tool.pytest.ini_options]
-# Make the `rcalibrary` package importable without installation.
-pythonpath = ["backend"]
+# `backend` -> the rcalibrary package; "." -> repo root for the `usecases` plugins.
+pythonpath = ["backend", "."]
 testpaths = ["tests"]
 addopts = "-q"
 

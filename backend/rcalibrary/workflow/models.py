@@ -79,6 +79,8 @@ class DataQuery(BaseModel):
     params: dict[str, Any] = Field(default_factory=dict)
     filters: list[NeutralFilterSpec] = Field(default_factory=list)
     limit: int | None = None
+    # Columns to force to string (e.g. IDs with leading zeros like a USID).
+    string_columns: list[str] | None = None
 
     @model_validator(mode="after")
     def _need_dataset_or_sql(self):
@@ -126,6 +128,8 @@ class PanelEncoding(BaseModel):
     series: str | None = None
     value: str | None = None
     columns: list[str] | None = None
+    state: str | None = None  # summary key -> "good"|"bad"|"neutral" (colors a stat)
+    sub: str | None = None  # summary key -> secondary line on a stat
 
 
 class PanelSpec(BaseModel):
