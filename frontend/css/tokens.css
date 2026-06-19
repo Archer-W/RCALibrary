@@ -9,6 +9,7 @@
   --good-tint: #e6f7ec;
   --warn: #e0892e;
   --warn-tint: #fdf3e7;
+  --warn-deep: #8a5114;  /* readable amber text on light/tint backgrounds (WCAG AA) */
   --bad: #c0392b;
   --bad-tint: #fbf3f3;
 

@@ -84,22 +84,45 @@ data_pulls:
       string_columns: [usid, trend_id]   # IDs are strings (USID has leading zeros)
       # No params/filters for the dummy pull (analyzer filters the small table).
       # Real Snowflake should filter in SQL by trend_id OR usid+date per input set.
+  # Step 2 pulls (correlated neighbor trends + per-USID care-call volume).
+  - id: neighbors
+    query:
+      dataset: voc_neighbors
+      string_columns: [anchor_usid, usid, trend_id]
+  - id: call_volume
+    query:
+      dataset: voc_call_volume
+      string_columns: [usid]
+  # Step 3 pull (tickets/events associated to the cluster + 2-hop neighbors).
+  - id: tickets
+    query:
+      dataset: voc_tickets
+      string_columns: [anchor_usid, usid]
 
 # --- ANALYSIS ----------------------------------------------------------------
 # Planned fixed-workflow triage:
 #   1. Trend look-up                         <- IMPLEMENTED (voc_collect_trend)
-#   2. Neighbor trend correlation            <- TODO
-#   3. Customer-complaint summary            <- TODO
-#   4. Known network-event search & ranking  <- TODO
+#   2. Neighbor trend correlation            <- IMPLEMENTED (voc_neighbor_correlation)
+#   3. Known network-event search & ranking  <- IMPLEMENTED (voc_ticket_search)
+#   4. Customer-complaint summary            <- TODO
 #   5. Neighbor impact analysis              <- TODO
 #   6. Conclusion & recommended next steps   <- TODO
 # Step 1 branches on _input_group, reports the trend (or a set-specific
-# not-found message), and always reports table freshness. Logic lives in
-# usecases/netcare_voc.py (loaded via RCA_PLUGINS).
+# not-found message), and always reports table freshness. Step 2 reads Step 1's
+# confirmed anchor (ctx.results) + the neighbors/call_volume pulls. Logic lives
+# in usecases/netcare_voc.py (loaded via RCA_PLUGINS).
 analysis:
   - id: collect_trend
     analyzer: voc_collect_trend
     inputs: { dataset: trends }
+    params: {}
+  - id: neighbor_correlation
+    analyzer: voc_neighbor_correlation
+    inputs: { dataset: neighbors }   # also reads ctx.datasets["call_volume"]
+    params: {}
+  - id: ticket_search
+    analyzer: voc_ticket_search
+    inputs: { dataset: tickets }     # chains on collect_trend + neighbor_correlation
     params: {}
 
 # --- STRUCTURE (structure agent) ---------------------------------------------
@@ -113,10 +136,53 @@ report:
       analysis_ref: collect_trend
       encoding: { value: delay_hours, state: delay_state, sub: table_updated }
       options: { unit: "h behind" }
-    # The found trend (Trend ID, USID, start time, status, last update) or, if not
-    # found, a set-specific message (the RCA flow stops here on not-found).
+    # Root cause: the top (highest-confidence) associated ticket, and its PRT.
+    - id: root_cause
+      type: stat
+      title: "Likely root cause"
+      analysis_ref: ticket_search
+      visible_when: { ref: collect_trend, key: found }
+      encoding: { value: rc_value, state: rc_state, sub: rc_sub }
+    - id: prt
+      type: stat
+      title: "Planned restore (PRT)"
+      analysis_ref: ticket_search
+      visible_when: { ref: collect_trend, key: found }
+      encoding: { value: prt_value, state: prt_state, sub: prt_sub, alert: prt_alert }
+      options: { value_text: true }   # date value -> smaller, one-line
+    # The found trend as a grid of value boxes — one box per value (Trend ID,
+    # USID, status [colored: Active=red/Cooling=orange/Closed=grey], start time,
+    # duration, last update). If not found, a set-specific message is shown
+    # instead (the RCA flow stops here on not-found).
     - id: trend_info
-      type: markdown
+      type: fields
       title: "Trend"
       analysis_ref: collect_trend
-      encoding: { value: trend_md }
+      encoding: { value: trend_fields }
+
+    # --- Step 2: neighbor trend correlation ---------------------------------
+    # Only rendered when Step 1 found a trend (the flow terminates otherwise).
+    - id: neighbor_table
+      type: table
+      title: "Correlated trends — searched USID & neighbors"
+      analysis_ref: neighbor_correlation
+      visible_when: { ref: collect_trend, key: found }
+      encoding:
+        columns: ["Trend ID", "USID", "Trend start", "Duration", "Distance (km)", "Location type"]
+    - id: neighbor_timeseries
+      type: timeseries
+      title: "Care call volume — searched USID & neighbors"
+      analysis_ref: neighbor_correlation
+      overlay_ref: ticket_search   # toggleable ticket bands/tags (Step 3)
+      visible_when: { ref: collect_trend, key: found }
+      encoding: { value: volume_ts }
+
+    # --- Step 3: associated tickets / known network events ------------------
+    # Color-coded table (cells may be {value,tone} badges), ranked by confidence.
+    - id: ticket_table
+      type: table
+      title: "Associated tickets — cluster + 2-hop neighbors (by confidence)"
+      analysis_ref: ticket_search
+      visible_when: { ref: collect_trend, key: found }
+      encoding:
+        columns: ["Ticket ID", "Ticket type", "Event name", "USID", "Trend dist (km)", "Event start", "Event end", "PRT", "Status", "Confidence", "Impact"]

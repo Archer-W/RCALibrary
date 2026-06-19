@@ -10,6 +10,8 @@ import { draw, baseLayout, baseConfig } from "./panels/plotly-base.js";
 import "./panels/panel-charts.js";
 import "./panels/panel-kpi.js";
 import "./panels/panel-table.js";
+import "./panels/panel-fields.js";
+import "./panels/panel-timeseries.js";
 import "./panels/panel-misc.js";
 
 // Public extension API for use-case custom panels (see docs/07). A use-case repo

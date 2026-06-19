@@ -17,10 +17,12 @@ from ..datasources.base import FetchResult
 from ..reporting.contract import (
     AnomalyHighlight,
     AnomalyPoint,
+    FieldsData,
     PanelPayload,
     ReportPayload,
     StatData,
     TableData,
+    TimeseriesData,
 )
 from .models import PanelSpec, Template
 
@@ -33,6 +35,8 @@ _DEFAULT_WIDTH = {
     "heatmap": "full",
     "table": "full",
     "markdown": "full",
+    "fields": "full",
+    "timeseries": "full",
     "bar": "half",
 }
 
@@ -47,6 +51,7 @@ def build(
     panels = [
         _build_panel(template, spec, datasets, analysis_results)
         for spec in template.report.panels
+        if _panel_visible(spec, analysis_results)
     ]
 
     # Roll up anomalies once per analysis (multiple panels may share an analysis,
@@ -68,6 +73,16 @@ def build(
     )
 
 
+def _panel_visible(spec: PanelSpec, analysis_results: dict[str, AnalysisResult]) -> bool:
+    """A panel with ``visible_when`` renders only if the referenced analysis
+    summary key is truthy (e.g. Step-2 panels gate on Step-1 ``found``)."""
+    vw = spec.visible_when
+    if not vw:
+        return True
+    ar = analysis_results.get(vw.ref)
+    return bool(ar and ar.summary.get(vw.key))
+
+
 def _build_panel(
     template: Template,
     spec: PanelSpec,
@@ -86,6 +101,15 @@ def _build_panel(
         _fill_table(spec, datasets, ar, panel)
     elif ptype == "stat":
         _fill_stat(spec, ar, panel)
+    elif ptype == "fields":
+        _fill_fields(spec, ar, panel)
+    elif ptype == "timeseries":
+        _fill_timeseries(spec, ar, panel)
+        # Optional cross-step overlay (e.g. tickets from Step 3) for this chart.
+        if spec.overlay_ref and panel.timeseries is not None:
+            overlay_ar = analysis_results.get(spec.overlay_ref)
+            if overlay_ar:
+                panel.timeseries.tickets = overlay_ar.summary.get("ticket_overlay") or []
     elif ptype == "heatmap":
         _fill_heatmap(spec, datasets, panel)
     elif ptype == "markdown":
@@ -155,7 +179,10 @@ def _fill_table(spec, datasets, ar, panel) -> None:
 
     columns = spec.encoding.columns or (list(records[0].keys()) if records else [])
     rows = [[_py(rec.get(c)) for c in columns] for rec in records[:_TABLE_ROW_CAP]]
-    panel.table = TableData(columns=columns, rows=rows)
+    # On an empty table, an analyzer may supply a domain message via
+    # summary["empty_notice"] (shown instead of the generic "No rows.").
+    notice = ar.summary.get("empty_notice") if (ar and not rows) else None
+    panel.table = TableData(columns=columns, rows=rows, notice=notice)
     # Surface anomaly counts so the table panel can show a severity chip too.
     if ar and ar.anomalies:
         panel.anomalies = AnomalyHighlight(severity_counts=_count_severity(ar.anomalies))
@@ -170,9 +197,32 @@ def _fill_stat(spec, ar, panel) -> None:
         unit=spec.options.get("unit"),
         state=summary.get(enc.state) if enc.state else None,
         sub=summary.get(enc.sub) if enc.sub else None,
+        alert=summary.get(enc.alert) if enc.alert else None,
     )
     if ar and ar.anomalies:
         panel.anomalies = AnomalyHighlight(severity_counts=_count_severity(ar.anomalies))
+
+
+def _fill_fields(spec, ar, panel) -> None:
+    # The analysis supplies a ready-made structure under encoding.value:
+    #   {"items": [{"label","value","state","sub"}, ...], "notice": "..."}
+    # (a bare list is also accepted). On not-found, items is empty + notice set.
+    summary = ar.summary if ar else {}
+    raw = summary.get(spec.encoding.value) if spec.encoding.value else None
+    if isinstance(raw, dict):
+        panel.fields = FieldsData(**raw)
+    elif isinstance(raw, list):
+        panel.fields = FieldsData(items=raw)
+    else:
+        panel.fields = FieldsData()
+
+
+def _fill_timeseries(spec, ar, panel) -> None:
+    # The analysis supplies the whole structure (all granularities embedded so
+    # the frontend toggles client-side) under encoding.value -> TimeseriesData.
+    summary = ar.summary if ar else {}
+    raw = summary.get(spec.encoding.value) if spec.encoding.value else None
+    panel.timeseries = TimeseriesData(**raw) if isinstance(raw, dict) else TimeseriesData()
 
 
 def _fill_heatmap(spec, datasets, panel) -> None:

@@ -31,6 +31,11 @@ export function renderPanel(panel, container) {
     body
   );
 
+  // Attach BEFORE rendering so the body has its real (laid-out) width when a
+  // panel draws — Plotly sizes to the container at draw time, and a detached
+  // (0-width) element would otherwise render narrow until a window resize.
+  container.appendChild(card);
+
   const fn = renderers.get(panel.type) || renderers.get("_unknown");
   try {
     fn(panel, body);
@@ -38,7 +43,6 @@ export function renderPanel(panel, container) {
     body.innerHTML = `<div class="panel-fallback">Render error: ${e.message}</div>`;
   }
 
-  container.appendChild(card);
   return {
     el: card,
     resize() {

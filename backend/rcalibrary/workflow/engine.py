@@ -110,11 +110,16 @@ class TemplateEngine:
         self, template: Template, datasets: dict[str, FetchResult], inputs: dict, warnings: list[str]
     ) -> dict[str, AnalysisResult]:
         results: dict[str, AnalysisResult] = {}
+        all_frames = {pid: fr.frame for pid, fr in datasets.items()}
         for step in template.analysis:
             fn = self.analyzers.get(step.analyzer)
             frame = datasets[step.inputs["dataset"]].frame
             ctx = AnalysisContext(
-                dataset=frame, params=_resolve(step.params, inputs), inputs=inputs
+                dataset=frame,
+                params=_resolve(step.params, inputs),
+                inputs=inputs,
+                results=results,  # prior steps' results (steps run in order)
+                datasets=all_frames,  # every pulled dataset, by pull id
             )
             try:
                 results[step.id] = fn(ctx)

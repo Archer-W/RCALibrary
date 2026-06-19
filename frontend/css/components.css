@@ -97,7 +97,7 @@
 /* Banners */
 .banner { padding: 12px 16px; border-radius: var(--radius-sm); margin-bottom: var(--sp-4); font-size: 13.5px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .banner-ok { background: var(--good-tint); color: var(--good); border: 1px solid #b9e6c8; }
-.banner-warn { background: var(--warn-tint); color: #a5641a; border: 1px solid #f3dcb8; }
+.banner-warn { background: var(--warn-tint); color: var(--warn-deep); border: 1px solid #f3dcb8; }
 .banner-error { background: var(--bad-tint); color: var(--bad); border: 1px solid #eed3d0; }
 .banner-chips { display: flex; gap: 6px; flex-wrap: wrap; }
 .sev-chip { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: #fff; border: 1px solid currentColor; }

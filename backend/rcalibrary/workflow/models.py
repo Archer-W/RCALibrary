@@ -120,6 +120,8 @@ class PanelType(str, Enum):
     stat = "stat"
     heatmap = "heatmap"
     markdown = "markdown"
+    fields = "fields"  # grid of labeled value boxes (one box per value)
+    timeseries = "timeseries"  # interactive multi-series chart (USID/granularity toggles)
 
 
 class PanelEncoding(BaseModel):
@@ -130,6 +132,15 @@ class PanelEncoding(BaseModel):
     columns: list[str] | None = None
     state: str | None = None  # summary key -> "good"|"bad"|"neutral" (colors a stat)
     sub: str | None = None  # summary key -> secondary line on a stat
+    alert: str | None = None  # summary key -> prominent alert text on a stat
+
+
+class PanelVisibility(BaseModel):
+    """Gate a panel on an analysis result: render only when
+    ``analysis_results[ref].summary.get(key)`` is truthy (e.g. Step-1 ``found``)."""
+
+    ref: str  # analysis step id
+    key: str  # summary key that must be truthy
 
 
 class PanelSpec(BaseModel):
@@ -141,6 +152,8 @@ class PanelSpec(BaseModel):
     encoding: PanelEncoding = Field(default_factory=PanelEncoding)
     options: dict[str, Any] = Field(default_factory=dict)
     width: str | None = None  # "full" | "half" | "third"; defaulted by type if unset
+    visible_when: PanelVisibility | None = None  # omit the panel unless this holds
+    overlay_ref: str | None = None  # pull an overlay (e.g. tickets) from another analysis step
 
 
 class ReportLayout(BaseModel):

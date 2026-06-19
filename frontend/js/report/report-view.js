@@ -33,6 +33,9 @@ export function renderReport(report, container) {
 
   const onResize = () => instances.forEach((i) => i.resize && i.resize());
   window.addEventListener("resize", onResize);
+  // Initial sizing pass after the browser lays out the grid (e.g. once a
+  // scrollbar appears), so charts fill their row without a manual resize.
+  if (typeof window.requestAnimationFrame === "function") window.requestAnimationFrame(onResize);
   return { destroy: () => window.removeEventListener("resize", onResize) };
 }
 

@@ -17,6 +17,12 @@ class AnalysisContext:
     dataset: pd.DataFrame
     params: dict[str, Any]
     inputs: dict[str, Any]  # validated template inputs (read-only)
+    # Results of analysis steps that ran earlier in this run, keyed by step id.
+    # Lets a step chain on an earlier one (e.g. Step 2 reads Step 1's anchor).
+    results: dict[str, "AnalysisResult"] = field(default_factory=dict)
+    # Every pulled dataset by data_pull id (``dataset`` is the step's primary).
+    # Lets a step read more than one source (e.g. neighbors + call volume).
+    datasets: dict[str, pd.DataFrame] = field(default_factory=dict)
 
 
 @dataclass

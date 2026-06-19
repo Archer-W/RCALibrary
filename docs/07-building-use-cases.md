@@ -150,10 +150,24 @@ def ran_kpi_correlation(ctx: AnalysisContext) -> AnalysisResult:
     )
 ```
 
-`AnalysisResult` fields: `summary` (scalars → `stat` panels), `anomalies`
+`AnalysisResult` fields: `summary` (scalars **and** structured objects →
+`stat`/`fields`/`timeseries` panels), `anomalies`
 (`index`/`column`/`value`/`severity`/`reason` → markers on charts + the summary
 banner), `annotations` (`{"type":"hline","y":...}` → threshold lines), `table`
-(rows → `table` panels). Reference it from a template by its registered name.
+(rows → `table` panels; a cell may be a `{value, tone}` object to render a colored
+badge). Reference it from a template by its registered name.
+
+**Chaining & multiple sources** (for multi-step workflows): besides `ctx.dataset`
+(this step's primary frame) and `ctx.params`, an analyzer gets:
+- `ctx.inputs` — validated inputs (incl. `_input_group` for grouped templates).
+- `ctx.results` — `{step_id: AnalysisResult}` of **earlier** steps, so a later
+  step can build on a confirmed entity (e.g. `ctx.results["lookup"].summary["anchor"]`).
+- `ctx.datasets` — `{pull_id: DataFrame}` for **every** data pull, so one analyzer
+  can join more than one source.
+
+Steps in `analysis:` run in order, and a panel can `visible_when:` gate on any
+step's summary key (e.g. only render later panels when an earlier step `found`
+something). See [docs/04 — Panel reference](04-authoring-templates.md#panel-reference).
 
 ---
 
@@ -215,14 +229,24 @@ section** — no JS needed. Built-in panel types and how each is driven:
 | `line` | time-series | `x`, `y`, `series?` | anomalies → red markers; `annotations` hline → dashed threshold |
 | `bar` | categorical / time bars | `x`, `y`, `series?` | grouped via `series` |
 | `scatter` | point cloud | `x`, `y`, `series?` | |
-| `stat` | single KPI card | `value` (a key in the analysis `summary`) | `options.unit` for a unit |
-| `table` | data grid | `columns` | rows from the analysis `table`, else the dataset |
+| `stat` | single KPI card | `value`, `state`, `sub`, `alert` (summary keys) | `options.unit`; `state` colors it; `alert` = red badge |
+| `table` | data grid | `columns` | rows from the analysis `table`, else the dataset; a cell `{value, tone}` → colored badge |
+| `fields` | grid of labeled boxes | `value` (→ `{items, notice}`) | one box per value; per-box `state` tint |
+| `timeseries` | interactive multi-series | `value` (→ `TimeseriesData`) | client-side USID/granularity toggles; `overlay_ref` adds toggleable bands |
 | `heatmap` | 2-D intensity | `x`, `y`, `value` | pivots the dataset |
-| `markdown` | static text | — | `options.text` |
+| `markdown` | static / analysis text | `value?` | `summary[value]` else `options.text` |
 
 Anomaly overlays + the summary banner come **for free** when a panel sets
 `analysis_ref` to an analysis that returns `anomalies`/`annotations`. Panel width
-is auto (`stat`→third, `line`/`table`→full, else half) or set `width: full|half|third`.
+is auto (`stat`→third; `line`/`table`/`fields`/`timeseries`→full; `bar`→half) or
+set `width: full|half|third`; panels in one row are equal height.
+
+**Color, gating & overlays** (full reference in
+[docs/04](04-authoring-templates.md#panel-reference)): `stat`/`fields` use
+`state` ∈ `good|warn|bad|neutral`; `table` badges use `tone` ∈
+`red|amber|green|blue|grey|purple`. `visible_when: {ref, key}` renders a panel
+only when an analysis summary key is truthy; `overlay_ref` lets a `timeseries`
+panel show another step's toggleable overlay.
 
 ### Optional: a custom panel type (advanced)
 Prefer composing from the built-ins. If you genuinely need a new visual, you can

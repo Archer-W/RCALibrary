@@ -37,16 +37,28 @@ def _voc_run(client, payload):
     return {p["id"]: p for p in r.json()["report"]["panels"]}
 
 
+def _field(panel, label):
+    for item in panel["fields"]["items"]:
+        if item["label"] == label:
+            return item
+    return None
+
+
 def test_voc_trend_id_found(client):
     panels = _voc_run(client, {"inputs": {"trend_id": "T-1001"}, "input_group": "trend_id"})
-    assert "T-1001" in panels["trend_info"]["markdown"]
+    # one box per value, including the new Duration box
+    assert panels["trend_info"]["type"] == "fields"
+    assert _field(panels["trend_info"], "Trend ID")["value"] == "T-1001"
+    assert _field(panels["trend_info"], "Trend status")["state"] in ("good", "warn", "bad", "neutral")
+    assert "day" in _field(panels["trend_info"], "Duration")["value"].lower()
     # data-quality indicator is always present, with a color state
     assert panels["data_freshness"]["stat"]["state"] in ("good", "bad", "neutral")
 
 
 def test_voc_trend_id_not_found(client):
     panels = _voc_run(client, {"inputs": {"trend_id": "T-9999"}, "input_group": "trend_id"})
-    assert "not found" in panels["trend_info"]["markdown"].lower()
+    assert panels["trend_info"]["fields"]["items"] == []
+    assert "not found" in panels["trend_info"]["fields"]["notice"].lower()
     assert panels["data_freshness"]["stat"]["sub"]  # freshness still shown on not-found
 
 
@@ -55,8 +67,79 @@ def test_voc_usid_date_found(client):
         client,
         {"inputs": {"usid": "0123456", "date": "2026-06-10", "search_neighbors": True}, "input_group": "usid_date"},
     )
-    assert "T-1001" in panels["trend_info"]["markdown"]
-    assert "0123456" in panels["trend_info"]["markdown"]
+    assert _field(panels["trend_info"], "Trend ID")["value"] == "T-1001"
+    assert _field(panels["trend_info"], "USID")["value"] == "0123456"
+
+
+def test_voc_step2_panels_present_when_found(client):
+    panels = _voc_run(client, {"inputs": {"trend_id": "T-1001"}, "input_group": "trend_id"})
+    # Correlated-trends table: searched USID first, with the contract columns.
+    nt = panels["neighbor_table"]["table"]
+    assert nt["columns"] == ["Trend ID", "USID", "Trend start", "Duration", "Distance (km)", "Location type"]
+    assert nt["rows"][0][0] == "T-1001" and nt["rows"][0][1] == "0123456"
+    # Interactive timeseries: 3 granularities + anchor/neighbor/aggregate series.
+    ts = panels["neighbor_timeseries"]["timeseries"]
+    assert [g["key"] for g in ts["granularities"]] == ["daily", "3h", "hourly"]
+    roles = {s["role"] for s in ts["series"]}
+    assert {"anchor", "neighbor", "aggregate"} <= roles
+    anchor = next(s for s in ts["series"] if s["role"] == "anchor")
+    assert anchor["usid"] == "0123456"
+    pts = anchor["by_gran"]["daily"]
+    assert len(pts["x"]) == len(pts["y"]) > 0
+    # trend-span band (earliest start -> latest end) is provided for the shade
+    assert ts["trend_span"]["start"] and ts["trend_span"]["end"]
+
+
+def test_voc_step2_gated_out_when_not_found(client):
+    panels = _voc_run(client, {"inputs": {"trend_id": "T-9999"}, "input_group": "trend_id"})
+    assert "neighbor_table" not in panels
+    assert "neighbor_timeseries" not in panels
+    assert "ticket_table" not in panels  # Step 3 gated out too
+
+
+def test_voc_step3_ticket_table_present_and_ranked(client):
+    panels = _voc_run(client, {"inputs": {"trend_id": "T-1001"}, "input_group": "trend_id"})
+    t = panels["ticket_table"]["table"]
+    assert t["columns"] == [
+        "Ticket ID", "Ticket type", "Event name", "USID", "Trend dist (km)",
+        "Event start", "Event end", "PRT", "Status", "Confidence", "Impact"
+    ]
+    # ranked by confidence desc (Confidence is column index 9)
+    confs = [int(row[9]["value"].rstrip("%")) for row in t["rows"]]
+    assert confs == sorted(confs, reverse=True)
+    # top ticket is the highest-confidence outage on the searched USID (in cluster -> 0, green)
+    assert t["rows"][0][0] == "TKT-1001"
+    assert t["rows"][0][1] == {"value": "Outage", "tone": "red"}
+    assert t["rows"][0][3] == "0123456"
+    assert t["rows"][0][4] == {"value": "0", "tone": "green"}  # in cluster -> green
+    assert t["rows"][0][9]["tone"] == "green"  # high confidence
+    # a 2-hop ticket carries a non-zero, color-coded distance to the trend
+    backhaul = next(r for r in t["rows"] if r[2] == "Backhaul link flap")
+    assert backhaul[3] == "0999003" and backhaul[4] == {"value": "9.5", "tone": "grey"}
+
+
+def test_voc_root_cause_and_prt_boxes(client):
+    panels = _voc_run(client, {"inputs": {"trend_id": "T-1001"}, "input_group": "trend_id"})
+    rc = panels["root_cause"]["stat"]
+    assert rc["value"] == "95%" and rc["state"] == "good"   # top ticket TKT-1001 (0.95)
+    assert "Outage" in rc["sub"]
+    prt = panels["prt"]["stat"]
+    assert prt["value"] != "missing"  # TKT-1001 has a PRT
+    assert prt["state"] == "bad"  # PRT (Jun 11) is in the past -> expired
+    assert prt["alert"] and "trend active" in prt["alert"].lower()  # prominent alert badge
+    # both header boxes are gated out when no trend is found
+    nf = _voc_run(client, {"inputs": {"trend_id": "T-9999"}, "input_group": "trend_id"})
+    assert "root_cause" not in nf and "prt" not in nf
+
+
+def test_voc_timeseries_carries_ticket_overlay(client):
+    panels = _voc_run(client, {"inputs": {"trend_id": "T-1001"}, "input_group": "trend_id"})
+    overlay = panels["neighbor_timeseries"]["timeseries"]["tickets"]
+    assert len(overlay) == 8  # all tickets for this anchor, toggleable on the chart
+    top = next(o for o in overlay if o["id"] == "TKT-1001")
+    assert top["tone"] == "green" and top["start"]
+    assert top["usid"] == "0123456" and top["type"] == "Outage"
+    assert top["event"] == "Fiber cut – metro ring 12"
 
 
 def test_l2_l3_placeholders(client):

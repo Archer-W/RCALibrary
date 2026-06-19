@@ -3,7 +3,8 @@
 .report-time { font-size: 12px; color: var(--muted); }
 
 .panel-grid {
-  display: grid; grid-template-columns: repeat(12, 1fr); gap: var(--sp-4); align-items: start;
+  /* stretch: panels sharing a row (e.g. the 3 header stat boxes) are equal height */
+  display: grid; grid-template-columns: repeat(12, 1fr); gap: var(--sp-4); align-items: stretch;
 }
 .panel {
   background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius);
@@ -20,27 +21,98 @@
 
 /* Anomaly chip on a panel head */
 .panel-chip { font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--bad-tint); color: var(--bad); }
-.panel-chip.sev-medium, .panel-chip.sev-warn { background: var(--warn-tint); color: #a5641a; }
+.panel-chip.sev-medium, .panel-chip.sev-warn { background: var(--warn-tint); color: var(--warn-deep); }
 .panel-chip.sev-low, .panel-chip.sev-info { background: var(--att-tint); color: var(--att-deep); }
 
 /* KPI / stat card */
 .kpi { padding: var(--sp-2) 0; }
 .kpi-value { font-size: 34px; font-weight: 800; color: var(--att-navy); line-height: 1; }
 .kpi-value.state-good { color: var(--good); }
+.kpi-value.state-warn { color: var(--warn-deep); }
 .kpi-value.state-bad { color: var(--bad); }
 .kpi-value.state-neutral { color: var(--muted); }
+.kpi-value.kpi-value-text { font-size: 18px; white-space: nowrap; }  /* date/text values: fit one line */
 .kpi-unit { font-size: 15px; font-weight: 600; color: var(--muted); }
 .kpi-label { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
 .kpi-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+/* Attention-grabbing alert (e.g. expired PRT while a trend is active) */
+.kpi.is-alert { background: var(--bad-tint); border-left: 4px solid var(--bad); border-radius: var(--radius-sm); padding: var(--sp-2) 12px; }
+.kpi-alert {
+  display: inline-block; margin-top: 8px; padding: 4px 11px; border-radius: 6px;
+  background: var(--bad); color: #fff; font-size: 12.5px; font-weight: 800; letter-spacing: .03em;
+  animation: kpi-alert-pulse 1.4s ease-in-out infinite;
+}
+@keyframes kpi-alert-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(192, 57, 43, 0.5); }
+  50% { box-shadow: 0 0 0 6px rgba(192, 57, 43, 0); }
+}
+@media (prefers-reduced-motion: reduce) { .kpi-alert { animation: none; } }
 .panel-markdown { font-size: 13.5px; line-height: 1.6; color: var(--ink-soft); }
 .panel-third .panel { border-top: 3px solid var(--att); }
+
+/* Field grid — one box per value (Trend ID, USID, status, duration, ...) */
+.field-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: var(--sp-3);
+}
+.field-box {
+  background: var(--bg-alt); border: 1px solid var(--line); border-left: 3px solid var(--line);
+  border-radius: var(--radius-sm); padding: 10px 13px;
+}
+.field-label { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.field-value { font-size: 19px; font-weight: 700; color: var(--att-navy); margin-top: 5px; line-height: 1.2; word-break: break-word; }
+.field-sub { font-size: 11.5px; color: var(--muted); margin-top: 4px; }
+/* State-colored boxes (e.g. trend status: Active=red, Cooling=orange, Closed=grey) */
+.field-box.state-good { border-left-color: var(--good); background: var(--good-tint); }
+.field-box.state-good .field-value { color: var(--good); }
+.field-box.state-warn { border-left-color: var(--warn); background: var(--warn-tint); }
+.field-box.state-warn .field-value { color: var(--warn-deep); }
+.field-box.state-bad { border-left-color: var(--bad); background: var(--bad-tint); }
+.field-box.state-bad .field-value { color: var(--bad); }
+.field-box.state-neutral { border-left-color: var(--muted); }
+.field-box.state-neutral .field-value { color: var(--ink-soft); }
+
+/* Interactive timeseries panel — controls above the chart */
+.ts-controls { display: flex; flex-wrap: wrap; gap: var(--sp-4); align-items: flex-start; margin-bottom: var(--sp-3); }
+.ts-ctl-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ts-ctl-label { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.ts-gran { display: inline-flex; border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; }
+.ts-gran-btn { border: 0; background: var(--bg); color: var(--ink-soft); font: inherit; font-size: 12px; padding: 5px 12px; cursor: pointer; border-right: 1px solid var(--line); }
+.ts-gran-btn:last-child { border-right: 0; }
+.ts-gran-btn:hover { background: var(--bg-alt); }
+.ts-gran-btn.active { background: var(--att-deep); color: #fff; font-weight: 600; }
+.ts-usids { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.ts-check { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-soft); cursor: pointer; }
+.ts-check input { cursor: pointer; margin: 0; }
+.ts-swatch { width: 11px; height: 11px; border-radius: 2px; display: inline-block; flex: none; }
+.ts-check-agg { font-style: italic; }
+.ts-chart { width: 100%; min-height: 380px; }
+/* Clickable ticket chips — outlined when off, filled when shown; colored by confidence */
+.ts-tickets { display: flex; flex-wrap: wrap; gap: 6px; }
+.ts-ticket-chip { border: 1px solid var(--line); background: var(--bg); color: var(--ink-soft); border-radius: 999px; padding: 2px 10px; font: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer; }
+.ts-ticket-chip:hover { background: var(--bg-alt); }
+.ts-ticket-chip.tone-green { border-color: #157a3a; color: #157a3a; }
+.ts-ticket-chip.tone-amber { border-color: var(--warn-deep); color: var(--warn-deep); }
+.ts-ticket-chip.tone-grey { border-color: #59667a; color: #59667a; }
+.ts-ticket-chip.active { color: #fff; }
+.ts-ticket-chip.tone-green.active { background: #157a3a; border-color: #157a3a; }
+.ts-ticket-chip.tone-amber.active { background: var(--warn-deep); border-color: var(--warn-deep); }
+.ts-ticket-chip.tone-grey.active { background: #59667a; border-color: #59667a; }
 
 /* Data table */
 .table-wrap { overflow-x: auto; max-height: 360px; overflow-y: auto; }
 .data-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 .data-table th { position: sticky; top: 0; background: var(--bg-alt); text-align: left; font-weight: 600; color: var(--ink-soft); padding: 7px 10px; border-bottom: 1px solid var(--line); }
-.data-table td { padding: 6px 10px; border-bottom: 1px solid var(--line); }
+.data-table td { padding: 6px 10px; border-bottom: 1px solid var(--line); max-width: 320px; overflow-wrap: anywhere; }
 .data-table tr:nth-child(even) td { background: var(--bg-alt); }
+
+/* Color-coded cell badge (used in rich tables, e.g. the tickets table) */
+.cell-badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 600; line-height: 1.5; white-space: nowrap; }
+.cell-badge.tone-red { background: var(--bad-tint); color: var(--bad); }
+.cell-badge.tone-amber { background: var(--warn-tint); color: var(--warn-deep); }
+.cell-badge.tone-green { background: var(--good-tint); color: #157a3a; }
+.cell-badge.tone-blue { background: var(--att-tint); color: var(--att-deep); }
+.cell-badge.tone-grey { background: #eef1f5; color: #59667a; }
+.cell-badge.tone-purple { background: #f1e9fb; color: #6f2fc0; }
 
 @media (max-width: 900px) {
   .panel-full, .panel-half, .panel-third { grid-column: span 12; }
