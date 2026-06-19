@@ -30,11 +30,16 @@
 .kpi-value.state-good { color: var(--good); }
 .kpi-value.state-warn { color: var(--warn-deep); }
 .kpi-value.state-bad { color: var(--bad); }
+.kpi-value.state-info { color: var(--att-deep); }
 .kpi-value.state-neutral { color: var(--muted); }
 .kpi-value.kpi-value-text { font-size: 18px; white-space: nowrap; }  /* date/text values: fit one line */
 .kpi-unit { font-size: 15px; font-weight: 600; color: var(--muted); }
 .kpi-label { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
 .kpi-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+/* highlighted pill (e.g. root-cause ticket #) + prominent non-muted detail line */
+.kpi-badge { display: inline-block; margin-top: 7px; padding: 3px 11px; border-radius: 999px;
+  background: var(--att-navy); color: #fff; font-size: 13px; font-weight: 800; letter-spacing: .02em; }
+.kpi-detail { font-size: 14px; font-weight: 700; color: var(--ink); margin-top: 7px; line-height: 1.3; }
 /* Attention-grabbing alert (e.g. expired PRT while a trend is active) */
 .kpi.is-alert { background: var(--bad-tint); border-left: 4px solid var(--bad); border-radius: var(--radius-sm); padding: var(--sp-2) 12px; }
 .kpi-alert {
@@ -68,6 +73,8 @@
 .field-box.state-warn .field-value { color: var(--warn-deep); }
 .field-box.state-bad { border-left-color: var(--bad); background: var(--bad-tint); }
 .field-box.state-bad .field-value { color: var(--bad); }
+.field-box.state-info { border-left-color: var(--att-deep); background: var(--att-tint); }
+.field-box.state-info .field-value { color: var(--att-deep); }
 .field-box.state-neutral { border-left-color: var(--muted); }
 .field-box.state-neutral .field-value { color: var(--ink-soft); }
 
@@ -98,6 +105,29 @@
 .ts-ticket-chip.tone-amber.active { background: var(--warn-deep); border-color: var(--warn-deep); }
 .ts-ticket-chip.tone-grey.active { background: #59667a; border-color: #59667a; }
 
+/* Informational workflow shown above the inputs on the runner page (blends into the form card) */
+.workflow-info { margin: 2px 0 var(--sp-4); }
+.workflow-info .panel { box-shadow: none; background: var(--bg-alt); }
+
+/* Workflow / process diagram (flow panel) — stages left->right, parallel steps stacked */
+.flow { display: flex; align-items: stretch; gap: 2px; overflow-x: auto; padding: 4px 2px 8px; }
+.flow-stage { flex: 0 0 auto; width: 138px; display: flex; flex-direction: column;
+  border: 1px solid var(--line); border-top: 3px solid var(--att); border-radius: var(--radius-sm);
+  background: var(--bg-alt); padding: 8px 9px; }
+.flow-stage.flow-parallel { border-top-color: var(--warn); }
+.flow-stage-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.flow-num { width: 18px; height: 18px; border-radius: 50%; background: var(--att-deep); color: #fff;
+  font-size: 11px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.flow-title { font-size: 12px; font-weight: 700; color: var(--att-navy); line-height: 1.15; }
+.flow-steps { display: flex; flex-direction: column; gap: 5px; flex: 1; }
+.flow-step { font-size: 11.5px; color: var(--ink-soft); line-height: 1.3; background: var(--bg);
+  border: 1px solid var(--line); border-radius: 4px; padding: 5px 7px; }
+.flow-parallel .flow-step { border-left: 2px solid var(--warn); }
+.flow-par-tag { margin-top: 6px; font-size: 9.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .04em; color: var(--warn-deep); }
+.flow-arrow { display: flex; align-items: center; color: var(--muted); font-size: 18px; flex: none; }
+.flow-caption { font-size: 11.5px; color: var(--muted); margin-top: 8px; }
+
 /* Data table */
 .table-wrap { overflow-x: auto; max-height: 360px; overflow-y: auto; }
 .data-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
@@ -114,6 +144,32 @@
 .cell-badge.tone-grey { background: #eef1f5; color: #59667a; }
 .cell-badge.tone-purple { background: #f1e9fb; color: #6f2fc0; }
 
+/* Map panel — legend, click-detail box, inline status */
+.map-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.map-legend-item { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--ink-soft); }
+/* legend swatches — site = triangle (offline) or filled disc (tiles); ticket = small outlined dot */
+.map-dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; border: 1px solid rgba(0,0,0,0.18); flex: none; }
+.map-tri { width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-bottom: 11px solid currentColor; display: inline-block; flex: none; }
+.map-dot-ticket { width: 9px; height: 9px; background: var(--muted); border: 1.5px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,0.18); }
+/* map + detail side-by-side */
+.map-body { display: flex; gap: var(--sp-3); align-items: stretch; margin-top: var(--sp-2); }
+.map-chart { flex: 1; min-width: 0; }
+.map-detail { width: 300px; flex: none; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--bg-alt); max-height: 460px; overflow: auto; }
+.map-detail:empty::before { content: "Click a site or ticket tag for details."; color: var(--muted); font-size: 12.5px; }
+.map-detail-head { display: flex; align-items: center; gap: 8px; font-size: 14px; margin-bottom: 2px; }
+.map-detail-row { font-size: 12.5px; color: var(--ink-soft); margin-top: 3px; }
+.map-detail-row.muted, .map-detail .muted { color: var(--muted); }
+.map-detail-sep { border: 0; border-top: 1px dashed var(--line); margin: 9px 0; }
+.map-detail .ts-ticket-chip { margin: 4px 4px 0 0; }
+.kpi-value-inline { font-weight: 700; font-size: 13px; }
+.kpi-value-inline.state-good { color: var(--good); }
+.kpi-value-inline.state-warn { color: var(--warn-deep); }
+.kpi-value-inline.state-bad { color: var(--bad); }
+.kpi-value-inline.state-info { color: var(--att-deep); }
+.kpi-value-inline.state-neutral { color: var(--muted); }
+
 @media (max-width: 900px) {
   .panel-full, .panel-half, .panel-third { grid-column: span 12; }
+  .map-body { flex-direction: column; }
+  .map-detail { width: auto; max-height: none; }
 }

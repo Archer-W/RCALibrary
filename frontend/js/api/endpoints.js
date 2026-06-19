@@ -1,6 +1,7 @@
 // The only module that knows backend URLs/shapes. If the API changes, edit here.
 import { getJSON, postJSON } from "./client.js";
 
+export const getMeta = () => getJSON("/meta").catch(() => ({ map_tiles: false }));
 export const listSolutions = () => getJSON("/solutions");
 export const listProblems = () => getJSON("/problems");
 export const listTemplates = () => getJSON("/templates");

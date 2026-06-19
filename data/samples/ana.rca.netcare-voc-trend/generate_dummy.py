@@ -141,4 +141,32 @@ TICKETS = [
 ]
 _write("voc_tickets.csv", TICKET_COLS, [dict(zip(TICKET_COLS, row)) for row in TICKETS])
 
+
+# --- voc_sites (map layer) ---------------------------------------------------
+# DATA AGENT: real site inventory (each USID -> lat/lon) replaces this dummy.
+# lat/lon for every USID in voc_neighbors + voc_tickets, plus a few NO-TREND
+# sites (0150xxx) within ~3 km of 0123456 so the "neighbors within 3 km" layer
+# is demonstrable. ~0.009 deg latitude ≈ 1 km. Base ≈ Dallas, TX.
+SITES = [
+    # anchor 0123456 cluster — scattered in 2D (varied bearings/distances)
+    ("0123456", 32.7800, -96.8000),  # anchor
+    ("0223456", 32.7880, -96.7930),  # ~1.1 km NE
+    ("0323456", 32.7600, -96.8250),  # ~3.2 km SW
+    ("0423456", 32.7950, -96.7150),  # ~8 km E
+    # 2-hop ticket USIDs for anchor 0123456 (different directions)
+    ("0999002", 32.8080, -96.7950),  # ~3.1 km N (ticket)
+    ("0999003", 32.7100, -96.7300),  # ~9.5 km SE (ticket)
+    ("0999001", 32.8700, -96.8900),  # ~13 km NW (ticket)
+    # other anchors' sites
+    ("0654321", 32.9200, -96.6800),
+    ("0654322", 32.9250, -96.6750),
+    ("0789012", 32.6800, -96.9200),
+    # NO-TREND sites within ~3 km of 0123456 (grey background layer), spread in 2D
+    ("0150001", 32.7850, -96.7950),  # ~0.7 km NE
+    ("0150002", 32.7740, -96.8060),  # ~0.9 km SW
+    ("0150003", 32.7770, -96.7920),  # ~0.8 km SE
+    ("0150004", 32.7890, -96.8080),  # ~1.2 km NW
+]
+_write("voc_sites.csv", ["usid", "lat", "lon"], [dict(zip(["usid", "lat", "lon"], s)) for s in SITES])
+
 print(f"done (last_update_time={updated})")

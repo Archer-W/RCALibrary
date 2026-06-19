@@ -53,7 +53,7 @@ def test_table_lists_anchor_first_then_neighbors():
     assert [r["USID"] for r in rows] == ["A1", "A2"]  # anchor (distance 0) first
     assert rows[0]["Trend ID"] == "T1"
     assert rows[0]["Distance (km)"] == 0.0
-    assert set(rows[0]) == {"Trend ID", "USID", "Trend start", "Duration", "Distance (km)", "Location type"}
+    assert set(rows[0]) == {"Trend ID", "USID", "Trend status", "Trend start", "Duration", "Distance (km)", "Location type"}
     # the other anchor's trend must not leak in
     assert all(r["USID"] != "Z9" for r in rows)
 

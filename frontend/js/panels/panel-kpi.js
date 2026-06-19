@@ -18,6 +18,9 @@ registerPanel("stat", (panel, body) => {
       s.unit ? el("span", { class: "kpi-unit" }, " " + s.unit) : null
     ),
   ];
+  // highlighted pill (e.g. the root-cause ticket #) + a prominent, non-muted detail line
+  if (s.badge) children.push(el("div", {}, el("span", { class: "kpi-badge" }, String(s.badge))));
+  if (s.detail) children.push(el("div", { class: "kpi-detail" }, String(s.detail)));
   if (s.alert) children.push(el("div", { class: "kpi-alert" }, s.alert));
   children.push(el("div", { class: "kpi-label" }, s.label || panel.title));
   if (s.sub) children.push(el("div", { class: "kpi-sub" }, s.sub));

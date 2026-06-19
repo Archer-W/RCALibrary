@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     audit_mode: str = "noop"  # "noop" | "file"
     audit_file: Path = REPO_ROOT / "audit.jsonl"
 
+    # Map panels: when true, the map panel uses online OpenStreetMap tiles
+    # (needs internet). Default false keeps the offline blank-canvas map.
+    map_tiles: bool = False
+
     # Server.
     host: str = "0.0.0.0"
     port: int = 8000

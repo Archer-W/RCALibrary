@@ -105,6 +105,28 @@ input_groups:
       - { name: date, label: "Date", type: date, required: true }
 ```
 
+## Informational workflow diagram (input page)
+
+To show a **process/triage diagram on the template's input page** (before the user
+runs anything — purely descriptive), add `meta.workflow`. It is template metadata,
+returned by `GET /templates/{id}` and rendered above the inputs — *not* a report
+panel. A stage with more than one `step` renders its steps as **parallel**.
+
+```yaml
+meta:
+  # ...id, name, problem...
+  workflow:
+    caption: "Steps within a stage run in parallel; stages flow left → right."
+    stages:
+      - { title: "Confirm trend", steps: ["Look up & validate the reported trend"] }
+      - { title: "Location context", steps: ["Pull site inventory", "Classify area type"] }  # parallel
+      - { title: "Conclusion", steps: ["State the likely root cause & next action"] }
+```
+
+(The same shape can be used as a **report** panel via `type: flow` with the stages
+under `options.stages` — use that when the flow should appear inside the report
+rather than on the input page.)
+
 ## Keeping leading-zero IDs intact
 
 Numeric-looking IDs (USIDs, cell IDs) lose leading zeros if parsed as numbers.
@@ -121,11 +143,13 @@ width?, visible_when?, overlay_ref?}`. A panel reads from its `dataset`
 |---|---|---|---|
 | `line` / `scatter` | dataset (+ `analysis_ref`) | `x`, `y`, `series?` | anomalies → markers; `hline` annotations → dashed threshold |
 | `bar` | dataset | `x`, `y`, `series?` | grouped via `series` |
-| `stat` | analysis `summary` | `value`, `state`, `sub`, `alert` (summary keys) | big value; `options.unit`; `state` colors it; `alert` = red badge |
+| `stat` | analysis `summary` | `value`, `state`, `badge`, `detail`, `sub`, `alert` (summary keys) | big value; `options.unit`; `state` colors it; `badge` = highlighted pill; `detail` = prominent (non-muted) line; `alert` = red badge |
 | `table` | analysis `table` (else dataset) | `columns` (display labels) | a cell may be `{value, tone}` → colored badge; `summary["empty_notice"]` shows when empty |
 | `fields` | `summary[encoding.value]` | `value` → `{items:[{label,value,state,sub}], notice}` | grid of labeled boxes; `state` tints a box |
 | `timeseries` | `summary[encoding.value]` | `value` → a `TimeseriesData` object | interactive (client-side USID/granularity toggles); `overlay_ref` adds toggleable bands |
+| `map` | `summary[encoding.value]` | `value` → a `MapData` object | interactive site map (lat/lon markers color-coded by status, clickable ticket tags, side detail panel, layer toggles, auto-fit). A muted street basemap (`options.map_tiles`/`RCA_MAP_TILES`) or an offline blank-canvas scatter; switchable at runtime |
 | `heatmap` | dataset | `x`, `y`, `value` | pivots the dataset |
+| `flow` | `options.stages` (static) | — | left→right process diagram; each stage `{title, steps:[...]}`; >1 step in a stage renders as parallel; optional `options.caption` |
 | `markdown` | `summary[encoding.value]` or `options.text` | `value?` | basic `**bold**` + line breaks |
 
 Widths default by type (`stat`→third; charts/`table`/`fields`/`timeseries`→full;
@@ -133,9 +157,9 @@ Widths default by type (`stat`→third; charts/`table`/`fields`/`timeseries`→f
 are rendered equal height.
 
 ### Color coding
-- **`stat` value** and **`fields` box**: `state` ∈ `good | warn | bad | neutral`
-  → green / orange / red / grey (`stat` reads it from the summary key named by
-  `encoding.state`).
+- **`stat` value** and **`fields` box**: `state` ∈ `good | warn | bad | info |
+  neutral` → green / orange / red / blue / grey (`stat` reads it from the summary
+  key named by `encoding.state`).
 - **`table` cell badge**: a cell emitted as `{value, tone}` renders as a colored
   pill; `tone` ∈ `red | amber | green | blue | grey | purple`. Plain scalars are text.
 

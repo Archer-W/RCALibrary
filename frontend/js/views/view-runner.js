@@ -3,6 +3,8 @@ import { el, clear } from "../core/dom.js";
 import * as endpoints from "../api/endpoints.js";
 import { renderForm } from "../forms/form-renderer.js";
 import { renderReport } from "../report/report-view.js";
+import { renderPanel } from "../panels/registry.js";
+import "../panels/panel-flow.js";  // register the "flow" renderer (for the informational workflow)
 
 export function render(container, params) {
   clear(container);
@@ -33,6 +35,13 @@ export function render(container, params) {
     }
     if (detail.meta.description) {
       formWrap.appendChild(el("p", { class: "muted" }, detail.meta.description));
+    }
+    // Informational triage workflow, shown ABOVE the inputs (before the user runs).
+    const wf = detail.meta.workflow;
+    if (wf && wf.stages && wf.stages.length) {
+      const wfHost = el("div", { class: "workflow-info" });
+      formWrap.appendChild(wfHost);
+      renderPanel({ id: "workflow", type: "flow", title: "Triage workflow", options: wf }, wfHost);
     }
     formWrap.appendChild(el("h2", { class: "section-title" }, "Inputs"));
     const formHost = el("div", {});

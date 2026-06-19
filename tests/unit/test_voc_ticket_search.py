@@ -90,7 +90,9 @@ def test_empty_cluster_returns_domain_notice():
 def test_root_cause_and_prt_from_top_ticket():
     s = _run().summary
     assert s["rc_value"] == "90%" and s["rc_state"] == "good"  # top ticket T-A1 (0.9)
-    assert s["rc_sub"] == "Outage · E1"
+    assert s["rc_badge"] == "T-A1"          # ticket number, highlighted
+    assert s["rc_detail"] == "E1"           # event name, shown prominently
+    assert s["rc_sub"] == "Outage · 90% confidence"
     assert s["prt_value"] != "missing"  # T-A1 has a PRT
 
 

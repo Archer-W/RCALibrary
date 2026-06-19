@@ -14,12 +14,12 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 PanelType = Literal[
-    "line", "bar", "scatter", "table", "stat", "heatmap", "markdown", "fields", "timeseries"
+    "line", "bar", "scatter", "table", "stat", "heatmap", "markdown", "fields", "timeseries", "map", "flow"
 ]
 Severity = Literal["info", "warn", "critical", "low", "medium", "high"]
 Width = Literal["full", "half", "third"]
-# Color states shared by stat / field boxes: green / orange / red / grey.
-ValueState = Literal["good", "warn", "bad", "neutral"]
+# Color states shared by stat / field boxes: green / orange / red / blue / grey.
+ValueState = Literal["good", "warn", "bad", "info", "neutral"]
 
 
 class AnomalyPoint(BaseModel):
@@ -50,6 +50,8 @@ class StatData(BaseModel):
     delta: float | None = None
     delta_dir: Literal["up", "down"] | None = None
     state: ValueState | None = None  # colors the value
+    badge: str | None = None  # highlighted pill under the value (e.g. the root-cause ticket #)
+    detail: str | None = None  # prominent (non-muted) secondary line (e.g. the event name)
     sub: str | None = None  # secondary line under the value
     alert: str | None = None  # prominent attention-grabbing alert text (red badge)
 
@@ -107,6 +109,57 @@ class TimeseriesData(BaseModel):
     notice: str | None = None  # shown when there is nothing to plot
 
 
+class MapTicketTag(BaseModel):
+    """A ticket shown as a clickable tag on a map site (reuses Step-3 ticket fields)."""
+
+    id: str
+    usid: str = ""
+    tone: str = "grey"
+    type: str = "—"
+    type_tone: str = "grey"
+    status: str = "—"
+    status_tone: str = "grey"
+    impact: str = "—"
+    impact_tone: str = "grey"
+    event: str = "—"
+    start: Any = None
+    end: Any = None
+    prt: Any = None
+
+
+class MapFeature(BaseModel):
+    """One site on the map. ``role`` drives styling/layers; ``color`` is the
+    server-resolved marker hex; ``color_state`` is the matching stat/field state."""
+
+    usid: str
+    lat: float | None = None  # None => no inventory coordinates (off-map)
+    lon: float | None = None
+    role: Literal["cluster", "ticket", "neighbor"] = "neighbor"
+    trend_status: str | None = None
+    trend_start: Any = None
+    trend_close: Any = None  # None => ongoing
+    color: str = "#9aa3af"
+    color_state: ValueState | None = None
+    total_calls: int = 0  # calls on this USID within the anomaly window
+    calls_known: bool = False  # False => no call-volume data for this USID (vs a real 0)
+    tickets: list[MapTicketTag] = Field(default_factory=list)
+
+
+class MapData(BaseModel):
+    """Interactive map panel: sites positioned by lat/lon (offline scatter by
+    default; OSM tiles when enabled), color-coded by trend status, with clickable
+    ticket tags and layer toggles."""
+
+    features: list[MapFeature] = Field(default_factory=list)
+    trend_span: dict[str, Any] | None = None  # the anomaly window {start, end}
+    cluster_total_calls: int = 0  # deduped cluster total in the window
+    center: dict[str, float] | None = None  # {lat, lon} default view
+    radius_km: float = 3.0  # neighbor inclusion radius (for the caption/legend)
+    legend: list[dict[str, str]] = Field(default_factory=list)  # [{label, color}]
+    missing_coords: int = 0  # sites with no inventory lat/lon
+    notice: str | None = None  # shown when there is nothing to plot
+
+
 class PanelPayload(BaseModel):
     id: str
     type: str
@@ -120,6 +173,7 @@ class PanelPayload(BaseModel):
     stat: StatData | None = None
     fields: FieldsData | None = None
     timeseries: TimeseriesData | None = None
+    map: MapData | None = None
     markdown: str | None = None
     # Shared:
     anomalies: AnomalyHighlight | None = None

@@ -18,6 +18,12 @@ Read first: [docs/07-building-use-cases.md](../../docs/07-building-use-cases.md)
 
 ## Inputs & the workflow starting point
 
+An **informational triage-workflow diagram** is shown on the input page (above the
+inputs, before the user runs anything). It is **template metadata, not a report
+panel** — authored under `meta.workflow` in `template.yaml` (`{caption, stages:[{
+title, steps:[…]}]}`); a stage with more than one step renders its steps as
+*parallel*. It is purely descriptive (no data), owned by the structure agent.
+
 The user picks ONE of two input sets; the chosen set's key arrives as
 `${input._input_group}` (and in the audit event). Step 1 branches on it:
 
@@ -36,9 +42,10 @@ The user picks ONE of two input sets; the chosen set's key arrives as
     indicator), plus the table's last-update timestamp.
   - **Trend** (a `fields` panel — **one box per value**): if found, Trend ID,
     USID, **Trend status** (color-coded: **Active = red, Cooling = orange,
-    Closed = grey**), trend start time, **Duration** (how long the trend has
-    been there, in days), and last update time; if not found, a set-specific
-    message and the flow stops (later steps will gate on `found`).
+    Closed = blue**), and — next to status — **Calls on searched USID** and
+    **Cluster calls (dedup)** in the trend window (appended from Step 2 via the
+    `fields` `overlay_ref`); then trend start time, **Duration**, last update; if
+    not found, a set-specific message and the flow stops (later steps gate on `found`).
 - Dummy data: [`data/samples/ana.rca.netcare-voc-trend/voc_trends.csv`](../../data/samples/ana.rca.netcare-voc-trend/voc_trends.csv),
   regenerate with `python data/samples/ana.rca.netcare-voc-trend/generate_dummy.py`
   (it stamps `last_update_time` ≈ now so freshness shows green; it turns red after 6h).
@@ -51,7 +58,7 @@ The analyzer + report expect these columns; **keep them when you wire real data*
 | `trend_id` | USID-level trend ID (string) |
 | `usid` | cell tower ID (string — has leading zeros) |
 | `trend_start_time` | trend start (ISO timestamp) |
-| `trend_status` | **`Active` / `Cooling` / `Closed`** (case-insensitive; drives the status box color — red / orange / grey. Any other value renders grey) |
+| `trend_status` | **`Active` / `Cooling` / `Closed`** (case-insensitive; drives the status color — red / orange / blue app-wide. Any other value renders grey = "no trend") |
 | `last_update_time` | row/table last refresh (ISO timestamp) — drives freshness |
 
 **Duration** is *derived*, not stored: the analyzer computes whole days from
@@ -73,8 +80,8 @@ at Step 1). It reads Step 1's confirmed anchor via **analyzer chaining**
 two data pulls. Output (panels in `template.yaml`):
 
 - **Correlated trends** table — searched USID first (distance 0), then neighbor
-  USIDs with correlated trends: `Trend ID · USID · Trend start · Duration ·
-  Distance (km) · Location type`.
+  USIDs with correlated trends: `Trend ID · USID · Trend status (color-coded
+  badge) · Trend start · Duration · Distance (km) · Location type`.
 - **Care call volume** — an interactive `timeseries` panel: one line per USID
   (searched USID emphasized) + a dashed **Aggregated (dedup)** line. The user
   toggles USIDs on/off and switches **granularity**; all three granularities are
@@ -166,13 +173,16 @@ as a colored badge — tones `red/amber/green/blue/grey/purple`):
 | Impact | high=red, medium=amber, low=green |
 
 Two **header stat boxes** (next to "Table data freshness") summarize the top
-(highest-confidence) ticket: **Likely root cause** (confidence %, colored by
-confidence; type · event in the sub) and **Planned restore (PRT)** (the top
-ticket's PRT, or "missing"). The PRT box turns **red when the PRT is in the past
-(expired)**, and shows a **prominent pulsing red alert badge** when it is expired
-*and* a cluster trend is still Active (`cluster_active`, published by Step 2 —
-the anchor's own status counts even if the neighbors query returns no rows). Both
-boxes come from `ticket_search`'s summary (`rc_*`, `prt_*` incl. `prt_alert`).
+(highest-confidence) ticket: **Likely root cause** and **Planned restore (PRT)**.
+The root-cause box leads with the confidence % (colored by confidence), then a
+**highlighted pill with the ticket number** (`rc_badge`), the **event name on a
+prominent line** (`rc_detail`), and `type · confidence` in the muted sub. (These
+use the `stat` panel's `badge` + `detail` encoding keys — see `docs/04`.) The PRT
+box turns **red when the PRT is in the past (expired)**, and shows a **prominent
+pulsing red alert badge** when it is expired *and* a cluster trend is still Active
+(`cluster_active`, published by Step 2 — the anchor's own status counts even if the
+neighbors query returns no rows). Both boxes come from `ticket_search`'s summary
+(`rc_value/rc_state/rc_badge/rc_detail/rc_sub`, `prt_*` incl. `prt_alert`).
 
 Logic: `voc_ticket_search` in [`usecases/netcare_voc.py`](../../usecases/netcare_voc.py).
 It reads Step 1's anchor + Step 2's `cluster_usids` (chaining via `ctx.results`)
@@ -200,6 +210,53 @@ is generic — reuse it in any `table` panel.
 2. **Ticket query + confidence** — fetch tickets for those USIDs and compute the
    real **association confidence** (the dummy reads a column). Return the contract
    columns above; the analyzer's ranking + color-coding stay unchanged.
+
+## Map layer (built as a STUB — you own the inventory + topology)
+
+A `map` panel (`trend_map`, analyzer `voc_map_build`, runs after `ticket_search`,
+gated on Step-1 `found`) plots the neighborhood. All site markers are the **same
+size**, colored by trend status:
+- **cluster** sites (the trend USIDs) — **Active=red, Cooling=orange, Closed=blue**;
+- **no-trend** sites (ticket sites + nearby sites within **3 km**) — dark slate
+  (`#475569`).
+- Any site that carries one or more tickets gets a single small **red dot at its
+  centre** (one mark per site, regardless of ticket count).
+
+Sites and tickets use **distinct shapes** offline (triangles vs the red dot); on
+the street basemap, where mapbox renders only circles, the red centre dot keeps
+tickets distinct from the colored site discs.
+
+Clicking a site shows USID / status / #-of-calls-in-window / trend start & close;
+clicking the **red ticket mark lists every ticket on that site** (type, status,
+impact, start, close, PRT) — in a **detail panel to the right** of the map. The view **auto-fits** the checked
+sites/tickets/neighbors. The **default basemap is the offline blank canvas**
+(`options.map_tiles: false`), where sites render as real **triangles** and
+tickets as **filled circles** (true distinct shapes, no internet). The panel's
+**"Street map" toggle** (or `RCA_MAP_TILES=1`) flips to a muted carto-positron
+basemap; mapbox renders only circles natively (a non-circle marker needs an
+async icon that races the tile paint), so on the street map sites become **filled
+discs** and tickets stay **solid circles**, distinguished by color/size. The
+legend tracks the active basemap's site shape.
+
+### Data contract (`voc_sites` pull) + chaining
+| column | meaning |
+|---|---|
+| `usid` | cell tower ID (string — leading zeros) |
+| `lat`, `lon` | site latitude / longitude (decimal degrees) |
+
+`voc_map_build` reads `ctx.dataset` (sites) + chains on Steps 1–3 via
+`ctx.results` (it consumes Step 2's `cluster_usids`, `cluster_meta` (status +
+start/close), `usid_window_calls`, `trend_span`, `cluster_total_calls`, and Step
+3's `ticket_overlay` incl. PRT). It returns `summary["map_data"]` (`MapData`:
+`features`,
+`center`, `legend`, `trend_span`, `missing_coords`, …).
+
+### Where you plug in (`# DATA AGENT:` in `netcare_voc.py`)
+1. **Site inventory** — replace `voc_sites` with the real USID→lat/lon source.
+2. **3 km neighbors** — `_haversine_km` + the 3 km radius is a placeholder; swap
+   in real topology (and a top-N cap if dense). Per-USID window call totals come
+   from Step 2's `usid_window_calls`; the deduped cluster total from
+   `cluster_total_calls` — both behind the same contract.
 
 ## (A) Switch from dummy data to real Snowflake — the main task
 
@@ -244,5 +301,9 @@ structure agent. Follow the `voc_collect_trend` / `voc_neighbor_correlation` /
 # Timeseries: toggle USIDs, switch Daily/3-hourly/Hourly, toggle Aggregated,
 #   click a ticket-ID chip to overlay its band + tag.
 # PRT box: red "expired" when PRT < now; pulsing ⚠️ alert when expired + a trend is Active.
-pytest      # unit + API tests for Steps 1–3
+# Map: red/orange/blue cluster sites (triangles) + slate nearby sites; sites with
+#   tickets get a red centre dot (click it -> all tickets on that site). Click a
+#   site for its details on the right; toggle layers. Offline blank canvas by
+#   default; "Street map" toggle (or RCA_MAP_TILES=1) flips to carto tiles.
+pytest      # unit + API tests for Steps 1–3 + the map
 ```

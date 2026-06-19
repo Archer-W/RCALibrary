@@ -229,11 +229,13 @@ section** — no JS needed. Built-in panel types and how each is driven:
 | `line` | time-series | `x`, `y`, `series?` | anomalies → red markers; `annotations` hline → dashed threshold |
 | `bar` | categorical / time bars | `x`, `y`, `series?` | grouped via `series` |
 | `scatter` | point cloud | `x`, `y`, `series?` | |
-| `stat` | single KPI card | `value`, `state`, `sub`, `alert` (summary keys) | `options.unit`; `state` colors it; `alert` = red badge |
+| `stat` | single KPI card | `value`, `state`, `badge`, `detail`, `sub`, `alert` (summary keys) | `options.unit`; `state` colors it; `badge` = highlighted pill; `detail` = prominent line; `alert` = red badge |
 | `table` | data grid | `columns` | rows from the analysis `table`, else the dataset; a cell `{value, tone}` → colored badge |
 | `fields` | grid of labeled boxes | `value` (→ `{items, notice}`) | one box per value; per-box `state` tint |
 | `timeseries` | interactive multi-series | `value` (→ `TimeseriesData`) | client-side USID/granularity toggles; `overlay_ref` adds toggleable bands |
+| `map` | interactive site map | `value` (→ `MapData`) | lat/lon markers color-coded by status, clickable ticket tags, side detail, layer toggles, auto-fit; muted street basemap or offline blank-canvas scatter, switchable at runtime / via `RCA_MAP_TILES` |
 | `heatmap` | 2-D intensity | `x`, `y`, `value` | pivots the dataset |
+| `flow` | workflow / process diagram | — (static `options.stages`) | left→right stages `{title, steps:[...]}`; multi-step stage = parallel; optional `options.caption` |
 | `markdown` | static / analysis text | `value?` | `summary[value]` else `options.text` |
 
 Anomaly overlays + the summary banner come **for free** when a panel sets
@@ -333,6 +335,7 @@ extensions.set_auth_provider(ApiKeyAuthProvider(valid_keys={}))
 | `RCA_FRONTEND_EXT_DIR` | (unset) | extra static dir served at `/ext` (custom panel JS) |
 | `RCA_PLUGINS` | (empty) | comma-separated import paths of your plugin modules |
 | `RCA_AUDIT_MODE` | `noop` | `noop` or `file` |
+| `RCA_MAP_TILES` | `false` | map panels use online OpenStreetMap tiles (needs internet) vs the offline blank-canvas default |
 | `RCA_HOST` / `RCA_PORT` | `0.0.0.0` / `8000` | server bind |
 
 ---

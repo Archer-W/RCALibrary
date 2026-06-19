@@ -122,6 +122,8 @@ class PanelType(str, Enum):
     markdown = "markdown"
     fields = "fields"  # grid of labeled value boxes (one box per value)
     timeseries = "timeseries"  # interactive multi-series chart (USID/granularity toggles)
+    map = "map"  # interactive site map (lat/lon markers, ticket tags, layer toggles)
+    flow = "flow"  # static workflow / process diagram (stages from options.stages)
 
 
 class PanelEncoding(BaseModel):
@@ -131,6 +133,8 @@ class PanelEncoding(BaseModel):
     value: str | None = None
     columns: list[str] | None = None
     state: str | None = None  # summary key -> "good"|"bad"|"neutral" (colors a stat)
+    badge: str | None = None  # summary key -> highlighted pill on a stat (e.g. ticket #)
+    detail: str | None = None  # summary key -> prominent secondary line on a stat
     sub: str | None = None  # summary key -> secondary line on a stat
     alert: str | None = None  # summary key -> prominent alert text on a stat
 
@@ -173,6 +177,22 @@ class ProblemRef(BaseModel):
     tags: list[str] = Field(default_factory=list)  # descriptive labels shown on the problem card
 
 
+class WorkflowStage(BaseModel):
+    """One stage in a template's informational triage flow. More than one `step`
+    means those steps run in parallel within the stage."""
+
+    title: str = ""
+    steps: list[str] = Field(default_factory=list)
+
+
+class WorkflowInfo(BaseModel):
+    """An informational process/triage diagram shown on the template's input page
+    (before the user runs it) — not a report panel."""
+
+    caption: str = ""
+    stages: list[WorkflowStage] = Field(default_factory=list)
+
+
 class TemplateMeta(BaseModel):
     id: str
     name: str
@@ -181,6 +201,7 @@ class TemplateMeta(BaseModel):
     solution_level: int = 1
     tags: list[str] = Field(default_factory=list)
     problem: ProblemRef | None = None
+    workflow: WorkflowInfo | None = None  # informational triage flow on the input page
 
 
 class Template(BaseModel):

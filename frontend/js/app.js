@@ -12,15 +12,26 @@ import "./panels/panel-kpi.js";
 import "./panels/panel-table.js";
 import "./panels/panel-fields.js";
 import "./panels/panel-timeseries.js";
+import "./panels/panel-map.js";
+import "./panels/panel-flow.js";
 import "./panels/panel-misc.js";
 
 // Public extension API for use-case custom panels (see docs/07). A use-case repo
 // serves a module at /ext/custom.js (RCA_FRONTEND_EXT_DIR) that calls
 // window.RCA.registerPanel("my_type", (panel, bodyEl) => { ... }).
-window.RCA = { registerPanel, el, plotly: { draw, baseLayout, baseConfig } };
+// window.RCA.config holds boot-time server config (e.g. map tiles).
+window.RCA = { registerPanel, el, plotly: { draw, baseLayout, baseConfig }, config: { mapTiles: false } };
 
 async function boot() {
   const root = document.getElementById("app");
+
+  // Boot config (e.g. whether map panels use online tiles).
+  try {
+    const m = await endpoints.getMeta();
+    window.RCA.config.mapTiles = !!m.map_tiles;
+  } catch {
+    /* defaults already set */
+  }
 
   // Optionally load use-case custom panels before anything renders.
   try {

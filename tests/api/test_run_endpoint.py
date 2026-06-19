@@ -49,7 +49,7 @@ def test_voc_trend_id_found(client):
     # one box per value, including the new Duration box
     assert panels["trend_info"]["type"] == "fields"
     assert _field(panels["trend_info"], "Trend ID")["value"] == "T-1001"
-    assert _field(panels["trend_info"], "Trend status")["state"] in ("good", "warn", "bad", "neutral")
+    assert _field(panels["trend_info"], "Trend status")["state"] in ("good", "warn", "bad", "info", "neutral")
     assert "day" in _field(panels["trend_info"], "Duration")["value"].lower()
     # data-quality indicator is always present, with a color state
     assert panels["data_freshness"]["stat"]["state"] in ("good", "bad", "neutral")
@@ -75,8 +75,9 @@ def test_voc_step2_panels_present_when_found(client):
     panels = _voc_run(client, {"inputs": {"trend_id": "T-1001"}, "input_group": "trend_id"})
     # Correlated-trends table: searched USID first, with the contract columns.
     nt = panels["neighbor_table"]["table"]
-    assert nt["columns"] == ["Trend ID", "USID", "Trend start", "Duration", "Distance (km)", "Location type"]
+    assert nt["columns"] == ["Trend ID", "USID", "Trend status", "Trend start", "Duration", "Distance (km)", "Location type"]
     assert nt["rows"][0][0] == "T-1001" and nt["rows"][0][1] == "0123456"
+    assert nt["rows"][0][2] == {"value": "Active", "tone": "red"}  # status badge
     # Interactive timeseries: 3 granularities + anchor/neighbor/aggregate series.
     ts = panels["neighbor_timeseries"]["timeseries"]
     assert [g["key"] for g in ts["granularities"]] == ["daily", "3h", "hourly"]
@@ -90,11 +91,54 @@ def test_voc_step2_panels_present_when_found(client):
     assert ts["trend_span"]["start"] and ts["trend_span"]["end"]
 
 
+def test_voc_triage_workflow_on_input_page(client):
+    # the triage workflow is informational template meta (shown on the input page),
+    # NOT a report panel
+    r = client.get("/api/templates/ana.rca.netcare-voc-trend")
+    assert r.status_code == 200
+    wf = r.json()["meta"]["workflow"]
+    assert wf and len(wf["stages"]) >= 6
+    assert any(len(s["steps"]) > 1 for s in wf["stages"])  # has parallel stages
+    # and it is NOT emitted as a report panel
+    panels = _voc_run(client, {"inputs": {"trend_id": "T-1001"}, "input_group": "trend_id"})
+    assert "triage_flow" not in panels
+
+
+def test_voc_root_cause_has_ticket_badge_and_event_detail(client):
+    panels = _voc_run(client, {"inputs": {"trend_id": "T-1001"}, "input_group": "trend_id"})
+    rc = panels["root_cause"]["stat"]
+    assert rc["badge"] == "TKT-1001"          # ticket number, highlighted
+    assert rc["detail"] and rc["detail"] != "—"  # event name shown prominently
+    assert rc["state"] in ("good", "warn", "neutral")
+
+
+def test_voc_map_panel(client):
+    panels = _voc_run(client, {"inputs": {"trend_id": "T-1001"}, "input_group": "trend_id"})
+    m = panels["trend_map"]["map"]
+    roles = {}
+    for f in m["features"]:
+        roles[f["role"]] = roles.get(f["role"], 0) + 1
+    assert roles.get("cluster") and roles.get("neighbor")  # trend cluster + nearby no-trend sites
+    anchor = next(f for f in m["features"] if f["usid"] == "0123456")
+    assert anchor["color"] == "#c0392b"  # Active -> red
+    assert any(f["color"] == "#0568AE" for f in m["features"])  # a Closed trend -> blue
+    assert m["legend"] and m["center"]
+
+
+def test_voc_trend_panel_has_call_total_boxes(client):
+    panels = _voc_run(client, {"inputs": {"trend_id": "T-1001"}, "input_group": "trend_id"})
+    labels = [i["label"] for i in panels["trend_info"]["fields"]["items"]]
+    assert "Calls on searched USID" in labels and "Cluster calls (dedup)" in labels
+    # inserted right after the Trend status box (per the overlay after_label)
+    assert labels.index("Calls on searched USID") == labels.index("Trend status") + 1
+
+
 def test_voc_step2_gated_out_when_not_found(client):
     panels = _voc_run(client, {"inputs": {"trend_id": "T-9999"}, "input_group": "trend_id"})
     assert "neighbor_table" not in panels
     assert "neighbor_timeseries" not in panels
     assert "ticket_table" not in panels  # Step 3 gated out too
+    assert "trend_map" not in panels  # map gated out too
 
 
 def test_voc_step3_ticket_table_present_and_ranked(client):

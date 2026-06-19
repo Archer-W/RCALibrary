@@ -19,6 +19,12 @@ def list_solutions(registry: SolutionRegistry = Depends(get_solution_registry)):
     return [s.info() for s in registry.all()]
 
 
+@router.get("/meta")
+def meta():
+    """Frontend config surfaced at boot (e.g. whether map panels use online tiles)."""
+    return {"map_tiles": get_settings().map_tiles}
+
+
 @router.get("/_internal/whoami", response_model=Principal)
 def whoami(principal: Principal = Depends(get_principal)):
     """Auth seam — returns the current (guest) principal. Real auth fills this in."""

@@ -46,7 +46,7 @@ def test_status_colors_active_cooling_closed():
     inputs = {"_input_group": "trend_id", "trend_id": "T-1"}
     assert _box(_run(_df(fresh, status="Active"), inputs), "Trend status")["state"] == "bad"
     assert _box(_run(_df(fresh, status="Cooling"), inputs), "Trend status")["state"] == "warn"
-    assert _box(_run(_df(fresh, status="Closed"), inputs), "Trend status")["state"] == "neutral"
+    assert _box(_run(_df(fresh, status="Closed"), inputs), "Trend status")["state"] == "info"
     # case-insensitive + unknown status falls back to neutral
     assert _box(_run(_df(fresh, status="active"), inputs), "Trend status")["state"] == "bad"
     assert _box(_run(_df(fresh, status="weird"), inputs), "Trend status")["state"] == "neutral"

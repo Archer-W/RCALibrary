@@ -33,6 +33,19 @@ meta:
       calls and troubleshooting requests) and identify the likely drivers.
     domain: "Customer Care / VoC"
     tags: ["customer care", "voc trend", "mobility service issue"]
+  # Informational triage flow shown on the INPUT page (before the user runs it).
+  # Steps within a stage run in parallel; stages flow left -> right.
+  workflow:
+    caption: "Steps within a stage run in parallel; stages flow left → right."
+    stages:
+      - { title: "Confirm trend", steps: ["Look up & validate the reported trend"] }
+      - { title: "Location context", steps: ["Pull site inventory (lat/lon)", "Classify area type by site density"] }
+      - { title: "Neighbor logic", steps: ["Set search radius & hop-count for the area type"] }
+      - { title: "Scan neighborhood", steps: ["Find trends on nearby sites", "Find tickets across the area"] }
+      - { title: "Correlate trends", steps: ["Spatial proximity", "Temporal overlap"] }
+      - { title: "Rank tickets", steps: ["Score by relevance & inferred customer impact"] }
+      - { title: "Restore outlook", steps: ["Check PRT & whether it has expired"] }
+      - { title: "Conclusion", steps: ["State the likely root cause & next action"] }
 
 # --- STRUCTURE (structure agent) ---------------------------------------------
 # Two mutually-exclusive input sets — the user picks ONE to start the lookup.
@@ -98,6 +111,11 @@ data_pulls:
     query:
       dataset: voc_tickets
       string_columns: [anchor_usid, usid]
+  # Map layer pull (site inventory: USID -> lat/lon).
+  - id: site_inventory
+    query:
+      dataset: voc_sites
+      string_columns: [usid]
 
 # --- ANALYSIS ----------------------------------------------------------------
 # Planned fixed-workflow triage:
@@ -124,6 +142,10 @@ analysis:
     analyzer: voc_ticket_search
     inputs: { dataset: tickets }     # chains on collect_trend + neighbor_correlation
     params: {}
+  - id: map_build
+    analyzer: voc_map_build
+    inputs: { dataset: site_inventory }   # chains on Steps 1-3; reads call_volume/neighbors
+    params: {}
 
 # --- STRUCTURE (structure agent) ---------------------------------------------
 report:
@@ -142,7 +164,7 @@ report:
       title: "Likely root cause"
       analysis_ref: ticket_search
       visible_when: { ref: collect_trend, key: found }
-      encoding: { value: rc_value, state: rc_state, sub: rc_sub }
+      encoding: { value: rc_value, state: rc_state, badge: rc_badge, detail: rc_detail, sub: rc_sub }
     - id: prt
       type: stat
       title: "Planned restore (PRT)"
@@ -151,13 +173,14 @@ report:
       encoding: { value: prt_value, state: prt_state, sub: prt_sub, alert: prt_alert }
       options: { value_text: true }   # date value -> smaller, one-line
     # The found trend as a grid of value boxes — one box per value (Trend ID,
-    # USID, status [colored: Active=red/Cooling=orange/Closed=grey], start time,
+    # USID, status [colored: Active=red/Cooling=orange/Closed=blue], start time,
     # duration, last update). If not found, a set-specific message is shown
     # instead (the RCA flow stops here on not-found).
     - id: trend_info
       type: fields
       title: "Trend"
       analysis_ref: collect_trend
+      overlay_ref: neighbor_correlation   # appends the two call-total boxes next to status
       encoding: { value: trend_fields }
 
     # --- Step 2: neighbor trend correlation ---------------------------------
@@ -168,7 +191,7 @@ report:
       analysis_ref: neighbor_correlation
       visible_when: { ref: collect_trend, key: found }
       encoding:
-        columns: ["Trend ID", "USID", "Trend start", "Duration", "Distance (km)", "Location type"]
+        columns: ["Trend ID", "USID", "Trend status", "Trend start", "Duration", "Distance (km)", "Location type"]
     - id: neighbor_timeseries
       type: timeseries
       title: "Care call volume — searched USID & neighbors"
@@ -186,3 +209,18 @@ report:
       visible_when: { ref: collect_trend, key: found }
       encoding:
         columns: ["Ticket ID", "Ticket type", "Event name", "USID", "Trend dist (km)", "Event start", "Event end", "PRT", "Status", "Confidence", "Impact"]
+
+    # --- Map layer: trend cluster, tickets & nearby sites -------------------
+    # Color: Active=red, Cooling=orange, Closed=blue, no-trend=grey. Street map
+    # (muted carto basemap) ON by default; the panel's "Street map" toggle / the
+    # RCA_MAP_TILES env can switch to the offline blank canvas.
+    - id: trend_map
+      type: map
+      title: "Neighborhood map — trends, tickets & nearby sites"
+      analysis_ref: map_build
+      visible_when: { ref: collect_trend, key: found }
+      encoding: { value: map_data }
+      # Default basemap = offline blank canvas (real triangle/circle shapes, no
+      # internet). Users flip on the muted street map via the "Street map" toggle;
+      # set RCA_MAP_TILES=1 to default it on for a deployment.
+      options: { map_tiles: false }

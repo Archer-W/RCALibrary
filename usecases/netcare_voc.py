@@ -9,7 +9,7 @@ Step 1 branches on the chosen input set (``_input_group``):
   * ``trend_id``  -> look up the trend by its USID-level Trend ID
   * ``usid_date`` -> look up the trend by USID near the provided date
 Output (a ``fields`` panel — one box per value): Trend ID, USID, trend status
-(color-coded: Active=red, Cooling=orange, Closed=grey), trend start time,
+(color-coded: Active=red, Cooling=orange, Closed=blue), trend start time,
 duration (how long the trend has been there), last update time. If not found, a
 (set-specific) message is shown and the flow stops (later steps, when added,
 gate on ``found``). Table freshness (delay vs now; red if > 6h) is ALWAYS
@@ -18,6 +18,7 @@ reported as a data-quality indicator, whether or not a trend is found.
 
 from __future__ import annotations
 
+import math
 from datetime import datetime, timezone
 
 import pandas as pd
@@ -28,13 +29,15 @@ from rcalibrary.analyzers.context import AnalysisContext, AnalysisResult
 FRESHNESS_THRESHOLD_HOURS = 6.0
 USID_DATE_WINDOW_DAYS = 7  # match a trend on the USID within +/- this many days
 
-# Trend status -> color state for the status box: Active=red, Cooling=orange,
-# Closed=grey. Matched case-insensitively; anything else falls back to neutral.
+# Trend status -> field/stat color state: Active=red, Cooling=orange, Closed=blue.
+# Matched case-insensitively; anything else falls back to neutral (grey = no trend).
 _STATUS_STATE = {
-    "active": "bad",      # red — still impacting
-    "cooling": "warn",    # orange — improving / settling
-    "closed": "neutral",  # grey — resolved
+    "active": "bad",   # red — still impacting
+    "cooling": "warn",  # orange — improving / settling
+    "closed": "info",  # blue — resolved
 }
+# Same scheme in the table badge palette (red/amber/blue).
+_STATUS_TONE = {"active": "red", "cooling": "amber", "closed": "blue"}
 
 
 def _parse_dt(value):
@@ -243,6 +246,10 @@ def voc_neighbor_correlation(ctx: AnalysisContext) -> AnalysisResult:
         {
             "Trend ID": str(r.get("trend_id") or ""),
             "USID": str(r.get("usid") or ""),
+            "Trend status": _badge(
+                str(r.get("trend_status") or "—").strip() or "—",
+                _STATUS_TONE.get(str(r.get("trend_status") or "").strip().lower(), "grey"),
+            ),
             "Trend start": _fmt(r.get("trend_start_time")),
             "Duration": _duration_str(r.get("trend_start_time"), r["_end"]),
             "Distance (km)": round(float(r.get("distance_km") or 0.0), 1),
@@ -318,6 +325,29 @@ def voc_neighbor_correlation(ctx: AnalysisContext) -> AnalysisResult:
         "y_title": "Care call volume",
         "notice": None,
     }
+
+    # --- call totals within the anomaly window (Trend-panel boxes + the map) --
+    if len(vol):
+        w = vol[(vol["_ts"] >= first_start) & (vol["_ts"] <= last_end)].copy()
+        w["_cv"] = pd.to_numeric(w["call_volume"], errors="coerce").fillna(0.0)
+        per_usid_win = {str(u): int(round(float(v))) for u, v in w.groupby("usid")["_cv"].sum().items()}
+    else:
+        per_usid_win = {}
+    searched_calls = int(per_usid_win.get(anchor_usid, 0))
+    cluster_total = sum(per_usid_win.get(u, 0) for u in usids)
+    cluster_dedup_calls = int(round(cluster_total * NEIGHBOR_DEDUP_FACTOR))
+    cluster_meta = {}  # usid -> {status, start, close}; anchor first wins on dup USID
+    for _, r in corr.iterrows():
+        u = str(r.get("usid") or "")
+        if u in cluster_meta:
+            continue
+        end_raw = r.get("trend_end_time")
+        cluster_meta[u] = {
+            "status": str(r.get("trend_status") or ""),
+            "start": r.get("trend_start_time"),
+            "close": None if pd.isna(_parse_dt(end_raw)) else end_raw,  # None => ongoing
+        }
+
     return AnalysisResult(
         summary={
             "found": True,
@@ -325,6 +355,18 @@ def voc_neighbor_correlation(ctx: AnalysisContext) -> AnalysisResult:
             "cluster_usids": usids,  # anchor + correlated neighbors (Step 3 chains on this)
             # any cluster trend (anchor incl.) still Active — drives Step 3's alert
             "cluster_active": anchor_active or _has_active(corr),
+            # for the map (Step 4) + the Trend-panel call-total boxes
+            "trend_span": volume_ts["trend_span"],
+            "cluster_meta": cluster_meta,             # usid -> {status, start, close}
+            "usid_window_calls": per_usid_win,        # usid -> calls in the window
+            "cluster_total_calls": cluster_dedup_calls,
+            "field_overlay": {  # appended into the Step-1 Trend fields panel
+                "after_label": "Trend status",
+                "items": [
+                    {"label": "Calls on searched USID", "value": searched_calls, "sub": "in the trend window"},
+                    {"label": "Cluster calls (dedup)", "value": cluster_dedup_calls, "sub": "all correlated USIDs"},
+                ],
+            },
         },
         table=table,  # rendered by the `table` panel (neighbor_table)
     )
@@ -407,6 +449,7 @@ def voc_ticket_search(ctx: AnalysisContext) -> AnalysisResult:
                 "empty_notice": "No known network events were associated to this cluster.",
                 # header boxes: no ticket -> no identifiable root cause / PRT
                 "rc_value": "—", "rc_sub": "no matching ticket", "rc_state": "neutral",
+                "rc_badge": None, "rc_detail": None,
                 "prt_value": "missing", "prt_sub": "no PRT (no ticket)", "prt_state": "neutral",
             },
             table=[],
@@ -460,11 +503,14 @@ def voc_ticket_search(ctx: AnalysisContext) -> AnalysisResult:
         start_raw = None if pd.isna(_parse_dt(start_raw)) else start_raw
         end_raw = r.get("event_end_time")
         end_raw = None if pd.isna(_parse_dt(end_raw)) else end_raw
+        prt_raw = r.get("prt")
+        prt_raw = None if pd.isna(_parse_dt(prt_raw)) else prt_raw
         overlay.append({
             "id": tid,
             "tone": conf_tone,  # confidence -> band fill + tag background/border
             "start": start_raw,
             "end": end_raw,
+            "prt": prt_raw,
             "usid": usid or "—",
             "type": ttype or "—",
             "type_tone": type_tone,
@@ -481,8 +527,11 @@ def voc_ticket_search(ctx: AnalysisContext) -> AnalysisResult:
     t_pct = round(float(top["_conf"]) * 100)
     t_type = str(top.get("ticket_type") or "—").strip() or "—"
     t_event = str(top.get("event_name") or "—")
+    t_id = str(top.get("ticket_id") or "—").strip() or "—"
     rc_value = f"{t_pct}%"
-    rc_sub = f"{t_type} · {t_event}"
+    rc_badge = t_id                      # the root-cause ticket number (highlighted pill)
+    rc_detail = t_event                  # the event name (prominent, not muted)
+    rc_sub = f"{t_type} · {t_pct}% confidence"
     rc_state = "good" if t_pct >= 70 else "warn" if t_pct >= 40 else "neutral"
     prt_alert = None
     prt_dt = _parse_dt(top.get("prt"))
@@ -504,7 +553,140 @@ def voc_ticket_search(ctx: AnalysisContext) -> AnalysisResult:
             "ticket_count": len(rows),
             "ticket_overlay": overlay,
             "rc_value": rc_value, "rc_sub": rc_sub, "rc_state": rc_state,
+            "rc_badge": rc_badge, "rc_detail": rc_detail,
             "prt_value": prt_value, "prt_sub": prt_sub, "prt_state": prt_state, "prt_alert": prt_alert,
         },
         table=rows,
     )
+
+
+# =============================================================================
+# Map layer — neighborhood map of the trend cluster, tickets & nearby sites
+# =============================================================================
+# DUMMY/STUB. The DATA AGENT swaps `voc_sites` for real site inventory (lat/lon)
+# and the 3 km rule for real topology. Output: a `map` panel (offline lat/lon
+# scatter by default; OSM tiles when enabled). See IMPLEMENTATION.md.
+
+NEIGHBOR_RADIUS_KM = 3.0  # include no-trend sites within this many km of a trend/ticket site
+_STATUS_MARKER = {  # trend status -> (marker hex, field/stat state)
+    "active": ("#c0392b", "bad"),    # red
+    "cooling": ("#e0892e", "warn"),  # orange
+    "closed": ("#0568AE", "info"),   # blue
+}
+_NO_TREND_MARKER = ("#475569", "neutral")  # dark slate — any no-trend site (tickets shown by the red centre mark)
+_MAP_LEGEND = [
+    {"label": "Active", "color": "#c0392b"},
+    {"label": "Cooling", "color": "#e0892e"},
+    {"label": "Closed", "color": "#0568AE"},
+    {"label": "No trend", "color": "#475569"},
+]
+
+
+def _haversine_km(lat1, lon1, lat2, lon2) -> float:
+    r = 6371.0088
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dphi, dlmb = math.radians(lat2 - lat1), math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dlmb / 2) ** 2
+    return 2 * r * math.asin(min(1.0, math.sqrt(a)))
+
+
+def _ticket_in_window(t: dict, span: dict) -> bool:
+    ws, we = _parse_dt(span.get("start")), _parse_dt(span.get("end"))
+    if pd.isna(ws) or pd.isna(we):
+        return True
+    ts = _parse_dt(t.get("start"))
+    if pd.isna(ts):
+        return True
+    te = _parse_dt(t.get("end"))
+    if pd.isna(te):
+        te = we  # ongoing -> through the window end
+    return (ts <= we) and (te >= ws)
+
+
+@analyzer("voc_map_build")
+def voc_map_build(ctx: AnalysisContext) -> AnalysisResult:
+    """Build the neighborhood map: cluster sites (colored by trend status), ticket
+    sites, and no-trend sites within 3 km. Chains on Steps 1-3 and reads the
+    ``site_inventory`` pull (ctx.dataset). DATA AGENT: real inventory + topology."""
+    prior = ctx.results.get("collect_trend")
+    anchor = (prior.summary.get("anchor") if prior else None) or {}
+    if not anchor.get("found"):
+        return AnalysisResult(summary={"found": False, "map_data": {"features": [], "notice": "No confirmed trend."}})
+
+    step2, step3 = ctx.results.get("neighbor_correlation"), ctx.results.get("ticket_search")
+    s2 = (step2.summary if step2 else {}) or {}
+    s3 = (step3.summary if step3 else {}) or {}
+    cluster_usids = [str(u) for u in (s2.get("cluster_usids") or [])]
+    cluster_meta = s2.get("cluster_meta") or {}  # usid -> {status, start, close}
+    win_calls = s2.get("usid_window_calls") or {}
+    trend_span = s2.get("trend_span") or {}
+    overlay = s3.get("ticket_overlay") or []
+
+    # site inventory: usid -> (lat, lon)  (DATA AGENT: real inventory CSV/query)
+    sites = ctx.dataset
+    inv: dict[str, tuple] = {}
+    if sites is not None and "usid" in getattr(sites, "columns", []):
+        for _, srow in sites.iterrows():
+            lat = pd.to_numeric(srow.get("lat"), errors="coerce")
+            lon = pd.to_numeric(srow.get("lon"), errors="coerce")
+            inv[str(srow.get("usid"))] = (
+                None if pd.isna(lat) else float(lat),
+                None if pd.isna(lon) else float(lon),
+            )
+
+    features: dict[str, dict] = {}
+
+    def _add(usid: str, role: str, meta):
+        lat, lon = inv.get(usid, (None, None))
+        meta = meta or {}
+        status = str(meta.get("status") or "").strip()
+        color, state = _STATUS_MARKER.get(status.lower(), _NO_TREND_MARKER) if status else _NO_TREND_MARKER
+        features[usid] = {
+            "usid": usid, "lat": lat, "lon": lon, "role": role,
+            "trend_status": status or None,
+            "trend_start": meta.get("start"),
+            "trend_close": meta.get("close"),
+            "color": color, "color_state": state,
+            "total_calls": int(win_calls.get(usid, 0)),
+            "calls_known": usid in win_calls,  # distinguish genuine 0 from "no data"
+            "tickets": [],
+        }
+
+    for u in cluster_usids:  # (a) trend cluster sites, colored by status
+        _add(u, "cluster", cluster_meta.get(u))
+    for t in overlay:  # (b) ticket sites whose event overlaps the anomaly window
+        u = str(t.get("usid") or "")
+        if not u or not _ticket_in_window(t, trend_span):
+            continue
+        if u not in features:
+            _add(u, "ticket", cluster_meta.get(u))
+        features[u]["tickets"].append(t)
+    # (c) no-trend sites within 3 km of any trend/ticket site. A site is mappable
+    # only when BOTH coordinates are present (a partial coord = off-map).
+    def _xy(f):
+        return f["lat"] is not None and f["lon"] is not None
+
+    anchored = [(f["lat"], f["lon"]) for f in features.values() if _xy(f)]
+    for usid, (lat, lon) in inv.items():
+        if usid in features or lat is None or lon is None:
+            continue
+        if any(_haversine_km(lat, lon, la, lo) <= NEIGHBOR_RADIUS_KM for la, lo in anchored):
+            _add(usid, "neighbor", None)
+
+    feats = list(features.values())
+    pts = [(f["lat"], f["lon"]) for f in feats if _xy(f)]
+    center = (
+        {"lat": sum(p[0] for p in pts) / len(pts), "lon": sum(p[1] for p in pts) / len(pts)}
+        if pts else None
+    )
+    map_data = {
+        "features": feats,
+        "trend_span": trend_span,
+        "cluster_total_calls": int(s2.get("cluster_total_calls") or 0),
+        "center": center,
+        "radius_km": NEIGHBOR_RADIUS_KM,
+        "legend": _MAP_LEGEND,
+        "missing_coords": sum(1 for f in feats if not _xy(f)),
+        "notice": "No sites to map." if not feats else (None if center else "No sites have coordinates to map."),
+    }
+    return AnalysisResult(summary={"found": True, "map_data": map_data})

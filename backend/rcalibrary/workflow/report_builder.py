@@ -17,7 +17,9 @@ from ..datasources.base import FetchResult
 from ..reporting.contract import (
     AnomalyHighlight,
     AnomalyPoint,
+    FieldItem,
     FieldsData,
+    MapData,
     PanelPayload,
     ReportPayload,
     StatData,
@@ -37,6 +39,8 @@ _DEFAULT_WIDTH = {
     "markdown": "full",
     "fields": "full",
     "timeseries": "full",
+    "map": "full",
+    "flow": "full",
     "bar": "half",
 }
 
@@ -103,6 +107,9 @@ def _build_panel(
         _fill_stat(spec, ar, panel)
     elif ptype == "fields":
         _fill_fields(spec, ar, panel)
+        # Optional: append/insert extra field boxes computed by another step.
+        if spec.overlay_ref and panel.fields is not None:
+            _merge_field_overlay(spec, analysis_results, panel)
     elif ptype == "timeseries":
         _fill_timeseries(spec, ar, panel)
         # Optional cross-step overlay (e.g. tickets from Step 3) for this chart.
@@ -110,6 +117,8 @@ def _build_panel(
             overlay_ar = analysis_results.get(spec.overlay_ref)
             if overlay_ar:
                 panel.timeseries.tickets = overlay_ar.summary.get("ticket_overlay") or []
+    elif ptype == "map":
+        _fill_map(spec, ar, panel)
     elif ptype == "heatmap":
         _fill_heatmap(spec, datasets, panel)
     elif ptype == "markdown":
@@ -196,6 +205,8 @@ def _fill_stat(spec, ar, panel) -> None:
         value=_py(summary.get(enc.value)) if enc.value else None,
         unit=spec.options.get("unit"),
         state=summary.get(enc.state) if enc.state else None,
+        badge=summary.get(enc.badge) if enc.badge else None,
+        detail=summary.get(enc.detail) if enc.detail else None,
         sub=summary.get(enc.sub) if enc.sub else None,
         alert=summary.get(enc.alert) if enc.alert else None,
     )
@@ -223,6 +234,32 @@ def _fill_timeseries(spec, ar, panel) -> None:
     summary = ar.summary if ar else {}
     raw = summary.get(spec.encoding.value) if spec.encoding.value else None
     panel.timeseries = TimeseriesData(**raw) if isinstance(raw, dict) else TimeseriesData()
+
+
+def _fill_map(spec, ar, panel) -> None:
+    # The analysis supplies the whole structure under encoding.value -> MapData.
+    summary = ar.summary if ar else {}
+    raw = summary.get(spec.encoding.value) if spec.encoding.value else None
+    panel.map = MapData(**raw) if isinstance(raw, dict) else MapData()
+
+
+def _merge_field_overlay(spec, analysis_results, panel) -> None:
+    """Insert extra field boxes published by another analysis as
+    ``summary["field_overlay"] = {after_label?, items:[{label,value,state?,sub?}]}``.
+    Inserted right after the box whose label == after_label, else appended."""
+    ov = analysis_results.get(spec.overlay_ref)
+    data = (ov.summary.get("field_overlay") if ov else None) or {}
+    raw_items = data.get("items") or []
+    if not raw_items:
+        return
+    extra = [FieldItem(**it) if isinstance(it, dict) else it for it in raw_items]
+    items = panel.fields.items
+    after = data.get("after_label")
+    idx = next((i for i, b in enumerate(items) if b.label == after), None) if after else None
+    if idx is None:
+        panel.fields.items = items + extra
+    else:
+        panel.fields.items = items[: idx + 1] + extra + items[idx + 1 :]
 
 
 def _fill_heatmap(spec, datasets, panel) -> None:
