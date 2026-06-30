@@ -25,6 +25,11 @@ meta:
   version: "0.1.0"
   solution_level: 1
   tags: [voc, customer-care, triage]
+  # Enable the AI "build a panel from a description" chat in the add-panel flow.
+  # The engine parses the request, picks a predefined library panel, fills params,
+  # and builds it. Free/offline simulated engine by default (RCA_AI_PROVIDER). See
+  # docs/11-ai-panel-builder.md.
+  ai_panels: true
   problem:
     id: netcare.voc-trend
     name: "NetCare VoC Trend Triage"
@@ -151,27 +156,22 @@ analysis:
 report:
   title: "NetCare VoC Trend Triage — Step 1: Collect trend information"
   panels:
-    # Always shown: table freshness as a data-quality indicator (red if > 6h late).
-    - id: data_freshness
-      type: stat
-      title: "Table data freshness"
-      analysis_ref: collect_trend
-      encoding: { value: delay_hours, state: delay_state, sub: table_updated }
-      options: { unit: "h behind" }
-    # Root cause: the top (highest-confidence) associated ticket, and its PRT.
-    - id: root_cause
-      type: stat
-      title: "Likely root cause"
-      analysis_ref: ticket_search
-      visible_when: { ref: collect_trend, key: found }
-      encoding: { value: rc_value, state: rc_state, badge: rc_badge, detail: rc_detail, sub: rc_sub }
-    - id: prt
-      type: stat
-      title: "Planned restore (PRT)"
-      analysis_ref: ticket_search
-      visible_when: { ref: collect_trend, key: found }
-      encoding: { value: prt_value, state: prt_state, sub: prt_sub, alert: prt_alert }
-      options: { value_text: true }   # date value -> smaller, one-line
+    # The three summary stats combined into ONE panel (a compact header row):
+    # table freshness (always), likely root cause + planned restore (when a trend
+    # was found). Each sub-stat reads its own analysis_ref + summary keys.
+    - id: header_stats
+      type: stat_group
+      title: "Triage summary"
+      options:
+        stats:
+          - { title: "Table data freshness", analysis_ref: collect_trend,
+              value: delay_hours, state: delay_state, sub: table_updated, unit: "h behind" }
+          - { title: "Likely root cause", analysis_ref: ticket_search,
+              value: rc_value, state: rc_state, badge: rc_badge, detail: rc_detail, sub: rc_sub,
+              visible_when: { ref: collect_trend, key: found } }
+          - { title: "Planned restore (PRT)", analysis_ref: ticket_search,
+              value: prt_value, state: prt_state, sub: prt_sub, alert: prt_alert, value_text: true,
+              visible_when: { ref: collect_trend, key: found } }
     # The found trend as a grid of value boxes — one box per value (Trend ID,
     # USID, status [colored: Active=red/Cooling=orange/Closed=blue], start time,
     # duration, last update). If not found, a set-specific message is shown
@@ -224,3 +224,101 @@ report:
       # internet). Users flip on the muted street map via the "Street map" toggle;
       # set RCA_MAP_TILES=1 to default it on for a deployment.
       options: { map_tiles: false }
+
+# --- PANEL LIBRARY -----------------------------------------------------------
+# OPTIONAL panels the user can ADD on demand (not loaded by default). Each bundle
+# is self-contained: it declares its own data_pulls + analysis (run lazily only
+# when the panel is added) and may chain on the main analysis results. The
+# bundle's `panel` is a normal PanelSpec. See docs/10 + docs/04.
+#   * STRUCTURE agent owns each bundle's `panel` (type/encoding/options/title).
+#   * DATA agent owns each bundle's `data_pulls` + `analysis`.
+panel_library:
+  # AI test case A: a care-call-volume timeseries with an AI-tunable date range &
+  # granularity. It declares NO data_pull (it reuses the main `call_volume` pull and
+  # Step 2's cluster); the analyzer reads ctx.params for date_start/date_end/
+  # granularity. Addable manually (defaults) or via the AI chat, e.g.
+  # "show call volume from 2026-05-01 to 2026-05-20 at hourly granularity".
+  - id: call_volume_trend
+    title: "Care call volume — by date range & granularity"
+    description: "Call-volume timeseries for the trend cluster; AI can set the date range & granularity."
+    analysis:
+      - id: call_volume_panel
+        analyzer: voc_call_volume_trend     # reuses main call_volume + cluster_usids; reads ctx.params
+        inputs: { dataset: call_volume }
+        params: {}
+    panel:
+      id: call_volume_trend
+      type: timeseries
+      title: "Care call volume — searched USID & neighbors"
+      analysis_ref: call_volume_panel
+      overlay_ref: ticket_search
+      encoding: { value: volume_ts }
+
+  - id: complaint_pie
+    title: "Customer complaint type distribution"
+    description: "Pie of complaint types (voice, data, coverage, …) across the trend cluster."
+    data_pulls:
+      - id: complaints
+        query:
+          dataset: voc_complaints
+          string_columns: [usid]
+    analysis:
+      - id: complaint_distribution
+        analyzer: voc_complaint_distribution   # chains on collect_trend + neighbor_correlation
+        inputs: { dataset: complaints }
+        params: {}
+    panel:
+      id: complaint_pie
+      type: pie
+      title: "Customer complaint type distribution"
+      analysis_ref: complaint_distribution
+      encoding: { labels: complaint_type, values: count }
+      options: { hole: 0.45 }
+
+  - id: rrc_kpi
+    title: "RAN RRC_Conn KPI — searched USID & neighbors"
+    description: "Hourly RRC connected-users KPI for trend/ticket USIDs, with ticket overlay."
+    data_pulls:
+      - id: ran_kpi
+        query:
+          dataset: voc_ran_kpi
+          string_columns: [usid]
+    analysis:
+      - id: rrc_kpi_ts
+        analyzer: voc_rrc_kpi                   # chains on Steps 1-3 (cluster + tickets)
+        inputs: { dataset: ran_kpi }
+        params: {}
+    panel:
+      id: rrc_kpi
+      type: timeseries
+      title: "RAN RRC_Conn KPI — searched USID & neighbors"
+      analysis_ref: rrc_kpi_ts
+      overlay_ref: ticket_search               # reuse the ticket bands from Step 3
+      encoding: { value: rrc_ts }
+
+  # AI test case B: an AI-ONLY panel (requires_ai). It digests free-text customer-
+  # care transcripts via the summarize_symptoms skill, filters out non-network asks
+  # (billing/account), and summarizes the network symptom-type breakdown. Hidden
+  # from the manual picker; build it in the AI chat, e.g. "summarize the symptom
+  # types from the call transcripts". DATA AGENT owns the real transcript source;
+  # the LLM AGENT owns the real summarize_symptoms skill. See docs/11.
+  - id: transcript_summary
+    title: "Customer symptom breakdown (from call transcripts)"
+    description: "AI-synthesized summary of network symptom types mentioned in care-call transcripts."
+    requires_ai: true
+    data_pulls:
+      - id: call_transcripts
+        query:
+          dataset: voc_call_transcripts
+          string_columns: [usid]
+    analysis:
+      - id: transcript_analysis
+        analyzer: voc_transcript_summary       # chains on collect_trend + neighbor_correlation
+        inputs: { dataset: call_transcripts }
+        params: {}
+    panel:
+      id: transcript_summary
+      type: markdown
+      title: "Customer symptom breakdown (from call transcripts)"
+      analysis_ref: transcript_analysis
+      encoding: { value: markdown }

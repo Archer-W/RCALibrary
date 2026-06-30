@@ -69,6 +69,53 @@ class TemplateEngine:
         self._emit_audit(template, principal, analysis_results, started, "ok", input_group)
         return TemplateRunResult(report=report, warnings=warnings)
 
+    def run_panel(
+        self,
+        template: Template,
+        library_panel,
+        raw_inputs: dict[str, Any],
+        principal: Principal | None = None,
+        input_group: str | None = None,
+        params: dict[str, Any] | None = None,
+    ):
+        """Compute ONE optional library panel on demand. Runs the template's main
+        pulls/analysis (so the panel can chain on them via ``ctx.results``) plus the
+        library bundle's own pulls/analysis, then builds just that panel. Returns
+        ``(PanelPayload, warnings)``.
+
+        ``params`` (optional) are AI-resolved knobs (e.g. ``date_start`` / ``date_end``
+        / ``granularity``) overlaid onto the bundle's analysis steps' ``.params`` so
+        analyzers read them via ``ctx.params``. Unknown keys are ignored by analyzers.
+
+        Done over an ephemeral *merged* template so the existing helpers
+        (``analysis_by_id`` / ``data_pull_by_id`` / anomaly resolution) resolve the
+        bundle's pulls/steps transparently. model_copy does not re-validate, so the
+        already-validated bundle objects pass through untouched."""
+        started = time.perf_counter()
+        warnings: list[str] = []
+        specs = self._resolve_input_specs(template, input_group)
+        inputs = validate_inputs(specs, raw_inputs)
+        if template.input_groups:
+            inputs["_input_group"] = input_group
+
+        bundle_steps = list(library_panel.analysis)
+        if params:
+            # Overlay AI-resolved params onto each bundle step (the step keeps its
+            # own YAML params; the overlay wins). model_copy keeps the originals
+            # untouched so a cached/shared template object is never mutated.
+            bundle_steps = [s.model_copy(update={"params": {**s.params, **params}}) for s in bundle_steps]
+        merged = template.model_copy(
+            update={
+                "data_pulls": list(template.data_pulls) + list(library_panel.data_pulls),
+                "analysis": list(template.analysis) + bundle_steps,
+            }
+        )
+        datasets = self._run_data_pulls(merged, inputs)
+        analysis_results = self._run_analysis(merged, datasets, inputs, warnings)
+        panel = report_builder._build_panel(merged, library_panel.panel, datasets, analysis_results)
+        self._emit_audit(template, principal, analysis_results, started, "ok", input_group)
+        return panel, warnings
+
     def _resolve_input_specs(self, template: Template, input_group: str | None):
         """Pick the input specs to validate against: the chosen group, or the
         flat list when the template has no groups."""

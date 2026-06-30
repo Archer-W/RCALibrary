@@ -7,4 +7,5 @@ venv/
 .pytest_cache/
 .ruff_cache/
 audit.jsonl
+/data/cache/
 .DS_Store

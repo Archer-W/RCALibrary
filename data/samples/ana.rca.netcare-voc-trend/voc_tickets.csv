@@ -7,6 +7,6 @@ TKT-1005,0123456,0323456,1,0.0,Outage,Commercial power loss – site,2026-06-08T
 TKT-1006,0123456,0423456,1,0.0,Congestion,PRB utilization saturation,2026-06-11T08:00:00Z,,,open,0.58,Medium
 TKT-1007,0123456,0999001,2,11.2,Maintenance,Transport ring maintenance,2026-06-07T00:00:00Z,2026-06-07T03:00:00Z,2026-06-07T03:00:00Z,closed,0.42,Low
 TKT-1008,0123456,0999002,2,3.2,Alarm,VSWR threshold alarm,2026-06-12T09:00:00Z,,,open,0.33,Low
-TKT-2001,0654321,0654321,0,0.0,Outage,Sector down – carrier 2,2026-06-12T20:00:00Z,,2026-06-20T18:33:43Z,open,0.88,High
+TKT-2001,0654321,0654321,0,0.0,Outage,Sector down – carrier 2,2026-06-12T20:00:00Z,,2026-06-28T00:18:03Z,open,0.88,High
 TKT-2002,0654321,0654322,1,0.0,Maintenance,Antenna re-tilt window,2026-06-11T02:00:00Z,2026-06-11T04:00:00Z,2026-06-11T04:00:00Z,closed,0.51,Low
 TKT-3001,0789012,0789012,0,0.0,Alarm,Cell availability drop,2026-06-14T02:00:00Z,,,open,0.69,Medium

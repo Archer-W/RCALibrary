@@ -4,6 +4,17 @@ version = "0.1.0"
 description = "Automated network-issue Root Cause Analysis — Level-1 fixed-workflow engine + UI"
 requires-python = ">=3.10"
 
+[project.optional-dependencies]
+# AI panel mode. The in-repo SimulatedAIEngine needs NONE of these (it is free /
+# offline / no LLM). Install `.[ai]` only to connect a REAL LLM: the OpenAI-compatible
+# client (`openai`) talks to a local gpt-oss endpoint (vLLM/Ollama). `mcp` is optional
+# and only needed to run the standalone MCP tool server. No LangGraph (not needed — the
+# routing flow is a simple tool loop). See docs/11-ai-panel-builder.md + docs/handoff/.
+ai = [
+  "openai>=1.0",            # OpenAI-compatible client for the local gpt-oss endpoint
+  "mcp>=1.2",               # optional: standalone MCP tool server
+]
+
 [tool.pytest.ini_options]
 # `backend` -> the rcalibrary package; "." -> repo root for the `usecases` plugins.
 pythonpath = ["backend", "."]

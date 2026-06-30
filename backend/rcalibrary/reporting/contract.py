@@ -14,7 +14,8 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 PanelType = Literal[
-    "line", "bar", "scatter", "table", "stat", "heatmap", "markdown", "fields", "timeseries", "map", "flow"
+    "line", "bar", "scatter", "table", "stat", "stat_group", "heatmap", "markdown",
+    "fields", "timeseries", "map", "flow", "pie"
 ]
 Severity = Literal["info", "warn", "critical", "low", "medium", "high"]
 Width = Literal["full", "half", "third"]
@@ -54,6 +55,13 @@ class StatData(BaseModel):
     detail: str | None = None  # prominent (non-muted) secondary line (e.g. the event name)
     sub: str | None = None  # secondary line under the value
     alert: str | None = None  # prominent attention-grabbing alert text (red badge)
+    value_text: bool = False  # render the value smaller + one-line (dates/text, not a big number)
+
+
+class StatGroupData(BaseModel):
+    """Several stat cards combined into ONE panel (e.g. the header summary row)."""
+
+    items: list[StatData] = Field(default_factory=list)
 
 
 class FieldItem(BaseModel):
@@ -171,6 +179,7 @@ class PanelPayload(BaseModel):
     # Non-chart panels:
     table: TableData | None = None
     stat: StatData | None = None
+    stat_group: StatGroupData | None = None
     fields: FieldsData | None = None
     timeseries: TimeseriesData | None = None
     map: MapData | None = None

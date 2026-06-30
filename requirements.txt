@@ -11,7 +11,11 @@ python-multipart>=0.0.9
 pytest>=8.2
 httpx>=0.27
 
+# --- AI panel mode (optional; pip install '.[ai]') ---
+# The shipped SimulatedAIEngine is free/offline and needs NONE of these. Install the
+# [ai] extra only to connect a REAL LLM (OpenAI-compatible client -> local gpt-oss):
+#   openai>=1.0   (the gpt-oss client)   ;   mcp>=1.2  (optional standalone MCP server)
+# No LangGraph. See pyproject [project.optional-dependencies] + docs/11 + docs/handoff/.
+
 # --- Phase 2 (not installed yet; uncomment when implemented) ---
 # snowflake-connector-python[pandas]>=3.10
-# langgraph>=0.2
-# langchain-core>=0.3

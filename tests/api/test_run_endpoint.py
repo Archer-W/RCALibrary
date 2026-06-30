@@ -44,6 +44,14 @@ def _field(panel, label):
     return None
 
 
+def _stat(panels, title):
+    # the 3 header stats are combined into one stat_group panel ("header_stats")
+    for item in panels["header_stats"]["stat_group"]["items"]:
+        if item["label"] == title:
+            return item
+    return None
+
+
 def test_voc_trend_id_found(client):
     panels = _voc_run(client, {"inputs": {"trend_id": "T-1001"}, "input_group": "trend_id"})
     # one box per value, including the new Duration box
@@ -52,14 +60,14 @@ def test_voc_trend_id_found(client):
     assert _field(panels["trend_info"], "Trend status")["state"] in ("good", "warn", "bad", "info", "neutral")
     assert "day" in _field(panels["trend_info"], "Duration")["value"].lower()
     # data-quality indicator is always present, with a color state
-    assert panels["data_freshness"]["stat"]["state"] in ("good", "bad", "neutral")
+    assert _stat(panels, "Table data freshness")["state"] in ("good", "bad", "neutral")
 
 
 def test_voc_trend_id_not_found(client):
     panels = _voc_run(client, {"inputs": {"trend_id": "T-9999"}, "input_group": "trend_id"})
     assert panels["trend_info"]["fields"]["items"] == []
     assert "not found" in panels["trend_info"]["fields"]["notice"].lower()
-    assert panels["data_freshness"]["stat"]["sub"]  # freshness still shown on not-found
+    assert _stat(panels, "Table data freshness")["sub"]  # freshness still shown on not-found
 
 
 def test_voc_usid_date_found(client):
@@ -106,7 +114,7 @@ def test_voc_triage_workflow_on_input_page(client):
 
 def test_voc_root_cause_has_ticket_badge_and_event_detail(client):
     panels = _voc_run(client, {"inputs": {"trend_id": "T-1001"}, "input_group": "trend_id"})
-    rc = panels["root_cause"]["stat"]
+    rc = _stat(panels, "Likely root cause")
     assert rc["badge"] == "TKT-1001"          # ticket number, highlighted
     assert rc["detail"] and rc["detail"] != "—"  # event name shown prominently
     assert rc["state"] in ("good", "warn", "neutral")
@@ -164,16 +172,17 @@ def test_voc_step3_ticket_table_present_and_ranked(client):
 
 def test_voc_root_cause_and_prt_boxes(client):
     panels = _voc_run(client, {"inputs": {"trend_id": "T-1001"}, "input_group": "trend_id"})
-    rc = panels["root_cause"]["stat"]
+    rc = _stat(panels, "Likely root cause")
     assert rc["value"] == "95%" and rc["state"] == "good"   # top ticket TKT-1001 (0.95)
     assert "Outage" in rc["sub"]
-    prt = panels["prt"]["stat"]
+    prt = _stat(panels, "Planned restore (PRT)")
     assert prt["value"] != "missing"  # TKT-1001 has a PRT
     assert prt["state"] == "bad"  # PRT (Jun 11) is in the past -> expired
     assert prt["alert"] and "trend active" in prt["alert"].lower()  # prominent alert badge
-    # both header boxes are gated out when no trend is found
+    # the root-cause + PRT sub-stats are gated out when no trend is found
     nf = _voc_run(client, {"inputs": {"trend_id": "T-9999"}, "input_group": "trend_id"})
-    assert "root_cause" not in nf and "prt" not in nf
+    assert _stat(nf, "Likely root cause") is None and _stat(nf, "Planned restore (PRT)") is None
+    assert _stat(nf, "Table data freshness") is not None  # freshness still shown
 
 
 def test_voc_timeseries_carries_ticket_overlay(client):

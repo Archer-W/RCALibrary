@@ -2,10 +2,15 @@
 
     python data/samples/ana.rca.netcare-voc-trend/generate_dummy.py
 
-Writes three datasets:
+Writes the default-report datasets:
   * voc_trends.csv       — Step 1 trend look-up (one row per trend).
   * voc_neighbors.csv     — Step 2 correlated trends, keyed by anchor_usid.
   * voc_call_volume.csv   — Step 2 hourly care-call volume per USID.
+  * voc_tickets.csv       — Step 3 associated tickets/events.
+  * voc_sites.csv         — map-layer site inventory (USID -> lat/lon).
+plus the OPTIONAL panel-library datasets (computed on demand when added):
+  * voc_complaints.csv    — complaint counts per USID + type (pie panel).
+  * voc_ran_kpi.csv       — hourly RRC_Conn KPI per USID (timeseries panel).
 
 `last_update_time` is stamped relative to NOW, so freshly generated data shows
 GREEN freshness; it turns RED once the delay exceeds 6h (re-run to refresh). Trend
@@ -168,5 +173,84 @@ SITES = [
     ("0150004", 32.7890, -96.8080),  # ~1.2 km NW
 ]
 _write("voc_sites.csv", ["usid", "lat", "lon"], [dict(zip(["usid", "lat", "lon"], s)) for s in SITES])
+
+
+# =============================================================================
+# OPTIONAL "panel library" datasets — computed on demand when the user adds the
+# corresponding library panel (not part of the default report). DATA AGENT: real
+# complaint + RAN-KPI queries replace these dummies. See IMPLEMENTATION.md / docs/10.
+# =============================================================================
+
+# Every USID that appears as a trend/neighbor or carries a ticket (so any cluster
+# the user searches has complaint + KPI data).
+RRC_USIDS = sorted({row[2] for row in NEIGHBORS} | {t[2] for t in TICKETS})
+
+# --- voc_complaints (library: complaint-type pie) ----------------------------
+# Pre-aggregated complaint counts per USID + complaint_type. The analyzer sums
+# `count` by type across the trend cluster -> a distribution pie.
+COMPLAINT_TYPES = [
+    "Voice call drops", "Data / Internet slow", "No service / coverage",
+    "SMS failures", "Billing dispute", "Device / handset",
+]
+complaint_rows = []
+for usid in RRC_USIDS:
+    seed = sum(ord(c) for c in usid)
+    for ti, ctype in enumerate(COMPLAINT_TYPES):
+        count = 4 + ((seed + ti * 13) % 18) + (12 if ti == 0 else 6 if ti == 1 else 0)
+        complaint_rows.append({"usid": usid, "complaint_type": ctype, "count": count})
+_write("voc_complaints.csv", ["usid", "complaint_type", "count"], complaint_rows)
+
+# --- voc_ran_kpi (library: RRC_Conn KPI timeseries) --------------------------
+# Hourly RRC_Conn (avg connected users) per USID over the same span as call
+# volume. A trend window shows a sustained DIP (an outage drops RRC), so the KPI
+# anomaly lines up with the care-call surge. The analyzer resamples to daily/3h/hourly.
+kpi_rows = []
+for usid in RRC_USIDS:
+    base = 220 + (sum(ord(c) for c in usid) % 60)
+    win = usid_window.get(usid)  # trend window (None for ticket-only USIDs)
+    for h in range(hours + 1):
+        t = GEN_START + timedelta(hours=h)
+        season = 60.0 * math.sin(2 * math.pi * ((t.hour / 24.0) - 0.25))  # midday peak
+        weekly = 20.0 * math.sin(2 * math.pi * (t.weekday() / 7.0))
+        dip = -0.45 * base if (win and win[0] <= t <= win[1]) else 0.0  # outage -> RRC drop
+        kpi_rows.append({"usid": usid, "timestamp": _iso(t), "rrc_conn": max(0, round(base + season + weekly + dip))})
+_write("voc_ran_kpi.csv", ["usid", "timestamp", "rrc_conn"], kpi_rows)
+
+# --- voc_call_transcripts (library: AI-only symptom breakdown) ----------------
+# DATA AGENT: real customer-care call transcripts replace this dummy. Free-text
+# bodies the `transcript_summary` panel (requires_ai) digests via the
+# summarize_symptoms skill — it filters out non-network asks (billing/account) and
+# counts the distinct users mentioning each network symptom. The phrasing matches
+# the skill's keyword maps so the deterministic dev classifier finds them.
+NETWORK_LINES = [
+    "Hi, my calls keep dropping every time I'm downtown — so frustrating.",
+    "I have no signal at all at home now, it's a total dead zone.",
+    "The internet is so slow, videos just keep buffering and won't load.",
+    "I can't call anyone, it fails immediately every time I try.",
+    "My texts won't send, the message just sits there, can't text at all.",
+    "Calls cut off after a minute, they keep dropping mid-conversation.",
+    "No service in my neighborhood since yesterday, can't connect to anything.",
+    "Data is super slow, pages won't load even with full bars.",
+]
+NON_NETWORK_LINES = [
+    "I want to dispute a charge on my bill from last month.",
+    "Can you help me reset my password? I can't log in to the app.",
+    "I'd like to ask about upgrading my plan and the price.",
+    "There's a billing error and I need a refund please.",
+]
+transcript_rows = []
+t_base = now - timedelta(days=2)
+for ui, usid in enumerate(RRC_USIDS):
+    seed = sum(ord(c) for c in usid)
+    n_net = 2 + (seed % 3)  # 2–4 network complaints per USID
+    for k in range(n_net):
+        line = NETWORK_LINES[(seed + k) % len(NETWORK_LINES)]
+        t = t_base + timedelta(hours=(ui * 6 + k))
+        transcript_rows.append({"usid": usid, "call_time": _iso(t), "transcript_text": line})
+    if ui % 2 == 0:  # ~half the USIDs also have a non-network call (to show filtering)
+        line = NON_NETWORK_LINES[seed % len(NON_NETWORK_LINES)]
+        t = t_base + timedelta(hours=(ui * 6 + n_net))
+        transcript_rows.append({"usid": usid, "call_time": _iso(t), "transcript_text": line})
+_write("voc_call_transcripts.csv", ["usid", "call_time", "transcript_text"], transcript_rows)
 
 print(f"done (last_update_time={updated})")

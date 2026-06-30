@@ -105,6 +105,22 @@ input_groups:
       - { name: date, label: "Date", type: date, required: true }
 ```
 
+## Optional panels: the panel library (added on demand)
+
+Beyond `report.panels` (the default layout), a template may declare a top-level
+`panel_library` of **optional** panels the user can add at runtime (computed on
+demand, not preloaded), then save/reorder/resize. Each library entry is a
+self-contained bundle (`{id, title, description, panel, data_pulls, analysis,
+requires_ai}`). See **[10-panel-customization.md](10-panel-customization.md)** for
+the full schema, the `/panel` + `/save` flow, and the saved-report cache
+(`RCA_REPORT_CACHE_DIR`).
+
+**AI chat (`meta.ai_panels: true`).** When enabled, the add-panel picker offers an
+AI chat that builds a library panel from a free-text request — filling parameters
+(`date_start` / `date_end` / `granularity`, read by analyzers via `ctx.params`) and,
+for `requires_ai: true` bundles, running a predefined synthesis skill. The shipped
+engine is free/offline (no LLM). See **[11-ai-panel-builder.md](11-ai-panel-builder.md)**.
+
 ## Informational workflow diagram (input page)
 
 To show a **process/triage diagram on the template's input page** (before the user
@@ -143,12 +159,14 @@ width?, visible_when?, overlay_ref?}`. A panel reads from its `dataset`
 |---|---|---|---|
 | `line` / `scatter` | dataset (+ `analysis_ref`) | `x`, `y`, `series?` | anomalies → markers; `hline` annotations → dashed threshold |
 | `bar` | dataset | `x`, `y`, `series?` | grouped via `series` |
-| `stat` | analysis `summary` | `value`, `state`, `badge`, `detail`, `sub`, `alert` (summary keys) | big value; `options.unit`; `state` colors it; `badge` = highlighted pill; `detail` = prominent (non-muted) line; `alert` = red badge |
+| `stat` | analysis `summary` | `value`, `state`, `badge`, `detail`, `sub`, `alert` (summary keys) | big value; `options.unit`; `state` colors it; `badge` = highlighted pill; `detail` = prominent (non-muted) line; `alert` = red badge; `options.value_text` = smaller one-line value |
+| `stat_group` | analysis `summary` (per item) | — | several stat cards in one panel; `options.stats` = list of mini stat-specs `{title, analysis_ref, value, state, sub, badge, detail, alert, unit, value_text, visible_when}` |
 | `table` | analysis `table` (else dataset) | `columns` (display labels) | a cell may be `{value, tone}` → colored badge; `summary["empty_notice"]` shows when empty |
 | `fields` | `summary[encoding.value]` | `value` → `{items:[{label,value,state,sub}], notice}` | grid of labeled boxes; `state` tints a box |
 | `timeseries` | `summary[encoding.value]` | `value` → a `TimeseriesData` object | interactive (client-side USID/granularity toggles); `overlay_ref` adds toggleable bands |
 | `map` | `summary[encoding.value]` | `value` → a `MapData` object | interactive site map (lat/lon markers color-coded by status, clickable ticket tags, side detail panel, layer toggles, auto-fit). A muted street basemap (`options.map_tiles`/`RCA_MAP_TILES`) or an offline blank-canvas scatter; switchable at runtime |
 | `heatmap` | dataset | `x`, `y`, `value` | pivots the dataset |
+| `pie` | analysis `table` (else dataset) | `labels`, `values` | distribution pie/donut; `options.hole` (0 = pie, >0 = donut) |
 | `flow` | `options.stages` (static) | — | left→right process diagram; each stage `{title, steps:[...]}`; >1 step in a stage renders as parallel; optional `options.caption` |
 | `markdown` | `summary[encoding.value]` or `options.text` | `value?` | basic `**bold**` + line breaks |
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 from functools import lru_cache
 
 from . import extensions
+from .ai.engine import AIPanelEngine, DisabledAIEngine, LLMToolEngine, SimulatedAIEngine
 
 # Importing the package registers the built-in analyzers via its __init__.
 from .analyzers import default_registry as analyzer_registry
@@ -21,6 +22,7 @@ from .config import get_settings
 from .datasources.registry import DataSourceRegistry
 from .datasources.sample import SampleDataProvider
 from .datasources.snowflake import SnowflakeProvider
+from .persistence.report_cache import ReportCache
 from .solutions.cli_agent import CliAgentSolution
 from .solutions.fixed_workflow import FixedWorkflowSolution
 from .solutions.langgraph_flow import LangGraphSolution
@@ -62,6 +64,54 @@ def get_template_registry() -> TemplateRegistry:
 @lru_cache
 def get_engine() -> TemplateEngine:
     return TemplateEngine(get_datasource_registry(), analyzer_registry, get_audit_logger())
+
+
+@lru_cache
+def get_report_cache() -> ReportCache:
+    settings = get_settings()
+    return ReportCache(settings.report_cache_dir, max_bytes=settings.report_cache_max_bytes)
+
+
+@lru_cache
+def get_ai_panel_engine() -> AIPanelEngine:
+    """The AI engine behind /panel/ai, selected by ``RCA_AI_PROVIDER``.
+
+    ``simulated`` (default) = the free/offline deterministic engine shipped here.
+    A use-case/LLM plugin registers a real engine via
+    ``extensions.register_ai_engine(provider, factory)`` and selects it with the
+    provider name; an unknown/unregistered provider degrades to disabled (never
+    500s). See docs/11-ai-panel-builder.md."""
+    settings = get_settings()
+    if not settings.ai_enabled:
+        return DisabledAIEngine()
+    if settings.ai_provider == "simulated":
+        return SimulatedAIEngine(
+            get_engine(), ttl_s=settings.ai_session_ttl_s, max_turns=settings.ai_max_turns
+        )
+    # Real LLM over an OpenAI-compatible endpoint (e.g. a local gpt-oss). The `openai`
+    # package is imported lazily inside the client; a missing base_url -> disabled (so a
+    # half-configured deployment degrades gracefully instead of erroring on first use).
+    if settings.ai_provider in ("openai", "local", "gpt-oss", "gpt_oss"):
+        if not settings.ai_base_url:
+            return DisabledAIEngine()
+        from .ai.llm import OpenAICompatLLMClient
+
+        client = OpenAICompatLLMClient(
+            base_url=settings.ai_base_url,
+            model=settings.ai_model,
+            api_key=settings.ai_api_key,
+            timeout=settings.ai_request_timeout,
+            temperature=settings.ai_temperature,
+            tool_choice=settings.ai_tool_choice,
+        )
+        return LLMToolEngine(
+            get_engine(), client, ttl_s=settings.ai_session_ttl_s, max_turns=settings.ai_max_turns
+        )
+    # A use-case/LLM plugin may register its own engine for a custom provider name.
+    factory = extensions.get_ai_engine_factory(settings.ai_provider)
+    if factory is not None:
+        return factory(get_engine())
+    return DisabledAIEngine()
 
 
 @lru_cache

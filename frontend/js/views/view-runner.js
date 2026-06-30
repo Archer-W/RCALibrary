@@ -47,16 +47,25 @@ export function render(container, params) {
     const formHost = el("div", {});
     formWrap.appendChild(formHost);
 
-    renderForm(detail, formHost, async (values, ctx) => {
-      ctx.submitBtn.disabled = true;
-      ctx.submitBtn.textContent = "Running…";
+    // Run (or re-run, bypassing the saved-report cache) and render the result as a
+    // customizable report (add library panels, remove, drag/resize, save).
+    async function runAndRender(values, inputGroup, refresh, btn) {
+      if (btn) { btn.disabled = true; btn.textContent = "Running…"; }
       clear(reportWrap);
       reportWrap.appendChild(el("div", { class: "loading" }, "Running analysis…"));
       try {
-        const result = await endpoints.runTemplate(params.templateId, values, ctx.inputGroup);
+        const result = await endpoints.runTemplate(params.templateId, values, inputGroup, refresh);
         clear(reportWrap);
         if (reportInstance) reportInstance.destroy();
-        reportInstance = renderReport(result.report, reportWrap);
+        reportInstance = renderReport(result.report, reportWrap, {
+          templateId: params.templateId,
+          inputs: values,
+          inputGroup,
+          library: detail.panel_library || [],
+          aiPanels: !!detail.ai_panels,
+          fromCache: !!result.from_cache,
+          onRefresh: () => runAndRender(values, inputGroup, true, null),
+        });
       } catch (e) {
         clear(reportWrap);
         if (e.status === 422 && e.body && e.body.errors) {
@@ -68,10 +77,11 @@ export function render(container, params) {
           reportWrap.appendChild(errorBanner(e));
         }
       } finally {
-        ctx.submitBtn.disabled = false;
-        ctx.submitBtn.textContent = "Run analysis";
+        if (btn) { btn.disabled = false; btn.textContent = "Run analysis"; }
       }
-    });
+    }
+
+    renderForm(detail, formHost, (values, ctx) => runAndRender(values, ctx.inputGroup, false, ctx.submitBtn));
   })();
 
   return { destroy: () => reportInstance && reportInstance.destroy() };

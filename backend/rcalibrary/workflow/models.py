@@ -118,12 +118,14 @@ class PanelType(str, Enum):
     scatter = "scatter"
     table = "table"
     stat = "stat"
+    stat_group = "stat_group"  # several stat cards combined into one panel (options.stats)
     heatmap = "heatmap"
     markdown = "markdown"
     fields = "fields"  # grid of labeled value boxes (one box per value)
     timeseries = "timeseries"  # interactive multi-series chart (USID/granularity toggles)
     map = "map"  # interactive site map (lat/lon markers, ticket tags, layer toggles)
     flow = "flow"  # static workflow / process diagram (stages from options.stages)
+    pie = "pie"  # pie/donut distribution chart (labels + values)
 
 
 class PanelEncoding(BaseModel):
@@ -131,6 +133,8 @@ class PanelEncoding(BaseModel):
     y: str | None = None
     series: str | None = None
     value: str | None = None
+    labels: str | None = None  # pie: column of category labels
+    values: str | None = None  # pie: column of numeric values
     columns: list[str] | None = None
     state: str | None = None  # summary key -> "good"|"bad"|"neutral" (colors a stat)
     badge: str | None = None  # summary key -> highlighted pill on a stat (e.g. ticket #)
@@ -202,6 +206,29 @@ class TemplateMeta(BaseModel):
     tags: list[str] = Field(default_factory=list)
     problem: ProblemRef | None = None
     workflow: WorkflowInfo | None = None  # informational triage flow on the input page
+    # Reserved: when true, the "add panel" picker offers an AI-chat option that asks
+    # an agent to build a panel from a free-text request (future fixed+agentic
+    # template). Default false -> users add only from the predefined library. See docs/10.
+    ai_panels: bool = False
+
+
+class LibraryPanel(BaseModel):
+    """An *optional* panel a user can add to a report on demand (not loaded by
+    default). Self-contained: it carries its own (lazily-run) data_pulls + analysis
+    steps; those steps may chain on the template's main analysis results via
+    ``ctx.results``. Computed only when the user adds it. See docs/10."""
+
+    id: str
+    title: str
+    description: str = ""
+    panel: PanelSpec
+    data_pulls: list[DataPull] = Field(default_factory=list)
+    analysis: list[AnalysisStep] = Field(default_factory=list)
+    # When true the panel can only be built via the AI chat (it needs natural-
+    # language input and/or a text-synthesis skill). Such panels are hidden from
+    # the manual "add panel" picker and rejected by the plain /panel endpoint;
+    # the AI engine may select them. See docs/11-ai-panel-builder.md.
+    requires_ai: bool = False
 
 
 class Template(BaseModel):
@@ -213,6 +240,8 @@ class Template(BaseModel):
     data_pulls: list[DataPull]
     analysis: list[AnalysisStep] = Field(default_factory=list)
     report: ReportLayout
+    # Optional panels users can add on demand from a per-problem library.
+    panel_library: list[LibraryPanel] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _check_input_groups(self):
@@ -242,6 +271,39 @@ class Template(BaseModel):
                 raise ValueError(
                     f"panel '{panel.id}' references unknown analysis '{panel.analysis_ref}'"
                 )
+
+        # Library panels: ids must be unique and not clash with report panels; each
+        # bundle's refs resolve against the UNION of main + that bundle's pulls/steps
+        # (a library analysis step may chain on a main step via ctx.results).
+        report_panel_ids = {p.id for p in self.report.panels}
+        seen_lib: set[str] = set()
+        for lib in self.panel_library:
+            if lib.id in seen_lib or lib.id in report_panel_ids:
+                raise ValueError(f"library panel id '{lib.id}' is duplicated or clashes with a report panel")
+            seen_lib.add(lib.id)
+            # A bundle's own pull/step ids must NOT collide with the main template's
+            # — run_panel concatenates the lists, and a dict-keyed collision would
+            # silently overwrite the main dataset/result.
+            for p in lib.data_pulls:
+                if p.id in pull_ids:
+                    raise ValueError(f"library '{lib.id}' data_pull '{p.id}' collides with a main data_pull id")
+            for a in lib.analysis:
+                if a.id in analysis_ids:
+                    raise ValueError(f"library '{lib.id}' analysis '{a.id}' collides with a main analysis id")
+            u_pulls = pull_ids | {p.id for p in lib.data_pulls}
+            u_steps = analysis_ids | {a.id for a in lib.analysis}
+            for step in lib.analysis:
+                ds = step.inputs.get("dataset")
+                if ds not in u_pulls:
+                    raise ValueError(
+                        f"library '{lib.id}' analysis '{step.id}' references unknown dataset '{ds}'"
+                    )
+            p = lib.panel
+            if p.dataset is not None and p.dataset not in u_pulls:
+                raise ValueError(f"library '{lib.id}' panel references unknown dataset '{p.dataset}'")
+            for ref in (p.analysis_ref, p.overlay_ref):
+                if ref is not None and ref not in u_steps:
+                    raise ValueError(f"library '{lib.id}' panel references unknown analysis '{ref}'")
         return self
 
     # convenience lookups -----------------------------------------------------
@@ -250,3 +312,6 @@ class Template(BaseModel):
 
     def data_pull_by_id(self, pull_id: str) -> DataPull | None:
         return next((p for p in self.data_pulls if p.id == pull_id), None)
+
+    def library_panel_by_id(self, lib_id: str) -> LibraryPanel | None:
+        return next((b for b in self.panel_library if b.id == lib_id), None)

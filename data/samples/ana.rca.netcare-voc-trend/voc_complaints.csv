@@ -1,0 +1,61 @@
+usid,complaint_type,count
+0123456,Voice call drops,31
+0123456,Data / Internet slow,20
+0123456,No service / coverage,9
+0123456,SMS failures,4
+0123456,Billing dispute,17
+0123456,Device / handset,12
+0223456,Voice call drops,32
+0223456,Data / Internet slow,21
+0223456,No service / coverage,10
+0223456,SMS failures,5
+0223456,Billing dispute,18
+0223456,Device / handset,13
+0323456,Voice call drops,33
+0323456,Data / Internet slow,22
+0323456,No service / coverage,11
+0323456,SMS failures,6
+0323456,Billing dispute,19
+0323456,Device / handset,14
+0423456,Voice call drops,16
+0423456,Data / Internet slow,23
+0423456,No service / coverage,12
+0423456,SMS failures,7
+0423456,Billing dispute,20
+0423456,Device / handset,15
+0654321,Voice call drops,31
+0654321,Data / Internet slow,20
+0654321,No service / coverage,9
+0654321,SMS failures,4
+0654321,Billing dispute,17
+0654321,Device / handset,12
+0654322,Voice call drops,32
+0654322,Data / Internet slow,21
+0654322,No service / coverage,10
+0654322,SMS failures,5
+0654322,Billing dispute,18
+0654322,Device / handset,13
+0789012,Voice call drops,19
+0789012,Data / Internet slow,26
+0789012,No service / coverage,15
+0789012,SMS failures,10
+0789012,Billing dispute,5
+0789012,Device / handset,18
+0999001,Voice call drops,20
+0999001,Data / Internet slow,27
+0999001,No service / coverage,16
+0999001,SMS failures,11
+0999001,Billing dispute,6
+0999001,Device / handset,19
+0999002,Voice call drops,21
+0999002,Data / Internet slow,10
+0999002,No service / coverage,17
+0999002,SMS failures,12
+0999002,Billing dispute,7
+0999002,Device / handset,20
+0999003,Voice call drops,22
+0999003,Data / Internet slow,11
+0999003,No service / coverage,18
+0999003,SMS failures,13
+0999003,Billing dispute,8
+0999003,Device / handset,21

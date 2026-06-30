@@ -169,6 +169,14 @@ Steps in `analysis:` run in order, and a panel can `visible_when:` gate on any
 step's summary key (e.g. only render later panels when an earlier step `found`
 something). See [docs/04 — Panel reference](04-authoring-templates.md#panel-reference).
 
+**AI synthesis skills (optional).** When the data is free text needing AI to digest
+it (e.g. call transcripts), register a `@skill("name")`
+([`rcalibrary.ai.skills`](../backend/rcalibrary/ai/skills/)) and call it from an
+analyzer. Skills are the only place an LLM runs in production; the shipped ones are
+free/offline deterministic stand-ins (the LLM agent swaps in a real impl under the
+same name). The AI add-panel chat reaches skills through the MCP tool server. See
+**[11-ai-panel-builder.md](11-ai-panel-builder.md)**.
+
 ---
 
 ## 3. Real data (a data-source plugin)
@@ -230,11 +238,13 @@ section** — no JS needed. Built-in panel types and how each is driven:
 | `bar` | categorical / time bars | `x`, `y`, `series?` | grouped via `series` |
 | `scatter` | point cloud | `x`, `y`, `series?` | |
 | `stat` | single KPI card | `value`, `state`, `badge`, `detail`, `sub`, `alert` (summary keys) | `options.unit`; `state` colors it; `badge` = highlighted pill; `detail` = prominent line; `alert` = red badge |
+| `stat_group` | several stat cards in one panel | — (`options.stats[]` mini-specs) | each item reads its own `analysis_ref` + keys; per-item `visible_when` |
 | `table` | data grid | `columns` | rows from the analysis `table`, else the dataset; a cell `{value, tone}` → colored badge |
 | `fields` | grid of labeled boxes | `value` (→ `{items, notice}`) | one box per value; per-box `state` tint |
 | `timeseries` | interactive multi-series | `value` (→ `TimeseriesData`) | client-side USID/granularity toggles; `overlay_ref` adds toggleable bands |
 | `map` | interactive site map | `value` (→ `MapData`) | lat/lon markers color-coded by status, clickable ticket tags, side detail, layer toggles, auto-fit; muted street basemap or offline blank-canvas scatter, switchable at runtime / via `RCA_MAP_TILES` |
 | `heatmap` | 2-D intensity | `x`, `y`, `value` | pivots the dataset |
+| `pie` | distribution pie/donut | `labels`, `values` | from analysis `table` (else dataset); `options.hole` |
 | `flow` | workflow / process diagram | — (static `options.stages`) | left→right stages `{title, steps:[...]}`; multi-step stage = parallel; optional `options.caption` |
 | `markdown` | static / analysis text | `value?` | `summary[value]` else `options.text` |
 

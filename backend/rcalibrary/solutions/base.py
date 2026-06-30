@@ -61,6 +61,7 @@ class SolutionResult(BaseModel):
     escalation_hint: int | None = None  # suggested next level
     trace: list[dict] = Field(default_factory=list)  # L2 search path / L3 transcript (later)
     warnings: list[str] = Field(default_factory=list)
+    from_cache: bool = False  # report came from a previously saved report (no recompute)
 
 
 class Solution(ABC):

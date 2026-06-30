@@ -43,11 +43,22 @@ export function renderPanel(panel, container) {
     body.innerHTML = `<div class="panel-fallback">Render error: ${e.message}</div>`;
   }
 
+  // The plot may be the body itself (chart drawn on body) or a descendant div.
+  const plotEl = () =>
+    body.querySelector(".js-plotly-plot") ||
+    (body.classList.contains("js-plotly-plot") ? body : null);
+
   return {
     el: card,
     resize() {
-      const plot = body.querySelector(".js-plotly-plot");
+      const plot = plotEl();
       if (plot && plotlyReady()) window.Plotly.Plots.resize(plot);
+    },
+    // Release Plotly's resources (responsive ResizeObserver + window listeners)
+    // before the card is discarded, so re-renders don't leak observers.
+    destroy() {
+      const plot = plotEl();
+      if (plot && plotlyReady() && window.Plotly.purge) window.Plotly.purge(plot);
     },
   };
 }

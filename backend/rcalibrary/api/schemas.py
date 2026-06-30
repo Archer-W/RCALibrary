@@ -6,12 +6,58 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from ..reporting.contract import PanelPayload
 from ..workflow.models import InputGroup, TemplateInput, TemplateMeta
 
 
 class RunBody(BaseModel):
     inputs: dict[str, Any] = Field(default_factory=dict)
     input_group: str | None = None  # which input set was chosen (grouped templates)
+    refresh: bool = False  # recompute even if a saved report exists for this key
+
+
+class PanelRequest(BaseModel):
+    """Add one optional library panel to a report, computed on demand."""
+
+    panel_id: str  # id of the panel_library entry to compute
+    inputs: dict[str, Any] = Field(default_factory=dict)
+    input_group: str | None = None
+
+
+class PanelResponse(BaseModel):
+    panel: PanelPayload
+    warnings: list[str] = Field(default_factory=list)
+
+
+class AIPanelRequest(BaseModel):
+    """One turn of the AI 'build a panel' chat (multi-turn via session_id)."""
+
+    message: str
+    session_id: str | None = None  # omit on the first turn; echo it back after
+    inputs: dict[str, Any] = Field(default_factory=dict)
+    input_group: str | None = None
+
+
+class AIPanelResponse(BaseModel):
+    session_id: str
+    # needs_input (clarifying question) | panel (built) | cannot_satisfy | disabled
+    status: str
+    reply: str
+    panel: PanelPayload | None = None
+    warnings: list[str] = Field(default_factory=list)
+
+
+class SaveReportBody(BaseModel):
+    """Persist the user's customized report (panels + layout) under the search key."""
+
+    inputs: dict[str, Any] = Field(default_factory=dict)
+    input_group: str | None = None
+    report: dict[str, Any]  # client-assembled ReportPayload-shaped blob
+
+
+class SaveResponse(BaseModel):
+    key: str
+    saved: bool = True
 
 
 class TemplateSummary(BaseModel):
@@ -51,11 +97,23 @@ class PanelPreview(BaseModel):
     title: str
 
 
+class PanelLibraryPreview(BaseModel):
+    """An optional panel offered in the 'add panel' picker (compute on demand)."""
+
+    id: str
+    title: str
+    description: str = ""
+    type: str
+    requires_ai: bool = False  # AI-only panels are hidden from the manual picker
+
+
 class TemplateDetail(BaseModel):
     meta: TemplateMeta
     inputs: list[TemplateInput]
     input_groups: list[InputGroup] = Field(default_factory=list)
     report_preview: list[PanelPreview]
+    panel_library: list[PanelLibraryPreview] = Field(default_factory=list)
+    ai_panels: bool = False  # whether the AI-chat 'add panel' option is offered
 
 
 class L2RunBody(BaseModel):

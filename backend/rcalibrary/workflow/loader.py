@@ -40,7 +40,14 @@ class TemplateLoader:
         return template
 
     def _check_analyzers(self, template: Template, path: Path) -> None:
-        for step in template.analysis:
+        steps = list(template.analysis)
+        # Optional library panels also carry their own analysis steps; validate
+        # them too, so a template whose library analyzer isn't loaded is SKIPPED at
+        # discovery (registry resilience contract) rather than appearing live and
+        # 500-ing when the panel is added on demand.
+        for lib in template.panel_library:
+            steps.extend(lib.analysis)
+        for step in steps:
             if not self.analyzers.has(step.analyzer):
                 raise TemplateValidationError(
                     f"{path}: analysis '{step.id}' uses unknown analyzer "

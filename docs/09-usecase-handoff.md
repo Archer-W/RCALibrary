@@ -13,6 +13,14 @@ The work is split **within the same template** along the data boundary.
 | `report` | structure agent | the panel layout (which charts/tables, their encodings) |
 | `data_pulls` | **data agent** | the real data requests (Snowflake datasets / SQL / params / filters) |
 | `analysis` | **data agent** | which analyzers run + their params (analyzers themselves are plugins) |
+| `panel_library[].panel` | structure agent | optional add-on panel layout (type/encoding/options) |
+| `panel_library[].data_pulls` / `.analysis` | **data agent** | the optional panel's own lazy data + logic |
+| `meta.ai_panels` + AI tool surface / engine / chat UI | structure agent | the AI "build a panel" plumbing (see [11](11-ai-panel-builder.md)) |
+| real LLM engine + synthesis skill impl + AI-tuned queries | **data / LLM agent** | connect the LLM (`# LLM AGENT:`) in its own env — the shipped engine/skill are offline stand-ins |
+
+Optional **library panels** (added on demand — see [10-panel-customization.md](10-panel-customization.md))
+split the same way: the structure agent owns each bundle's `panel`; the data agent
+owns its `data_pulls` + `analysis`.
 
 Plus: the **data agent** ships analyzer functions, the real data-source provider,
 and (optionally) the auth provider as **plugins** (`RCA_PLUGINS`) — see

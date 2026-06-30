@@ -172,9 +172,11 @@ as a colored badge — tones `red/amber/green/blue/grey/purple`):
 | Confidence | ≥0.7 green, 0.4–0.7 amber, <0.4 grey (shown as %) |
 | Impact | high=red, medium=amber, low=green |
 
-Two **header stat boxes** (next to "Table data freshness") summarize the top
-(highest-confidence) ticket: **Likely root cause** and **Planned restore (PRT)**.
-The root-cause box leads with the confidence % (colored by confidence), then a
+The three summary stats — **Table data freshness**, **Likely root cause**, and
+**Planned restore (PRT)** — are combined into ONE panel (`header_stats`, a
+`stat_group`; one row at the top). Each sub-stat reads its own `analysis_ref` +
+keys; root-cause/PRT are gated per-item by `visible_when` (shown only when a trend
+is found). The root-cause card leads with the confidence % (colored by confidence), then a
 **highlighted pill with the ticket number** (`rc_badge`), the **event name on a
 prominent line** (`rc_detail`), and `type · confidence` in the muted sub. (These
 use the `stat` panel's `badge` + `detail` encoding keys — see `docs/04`.) The PRT
@@ -257,6 +259,65 @@ start/close), `usid_window_calls`, `trend_span`, `cluster_total_calls`, and Step
    in real topology (and a top-N cap if dense). Per-USID window call totals come
    from Step 2's `usid_window_calls`; the deduped cluster total from
    `cluster_total_calls` — both behind the same contract.
+
+## Optional library panels (added on demand — STUB data, you own the logic)
+
+Two **optional** panels live under `panel_library` in `template.yaml` (NOT in the
+default report). The user adds them at runtime from the "Add an RCA panel" picker;
+each is computed on demand via `POST /api/templates/{id}/panel`. See
+[../../docs/10-panel-customization.md](../../docs/10-panel-customization.md). Each
+bundle owns its `data_pulls` + `analysis` (your swap point); the `panel` is the
+structure agent's.
+
+**1. Customer complaint type distribution (`complaint_pie`, a `pie` panel)**
+- Pull `voc_complaints` — columns: `usid`, `complaint_type`, `count` (pre-aggregated
+  per USID + type). Analyzer `voc_complaint_distribution` sums `count` by
+  `complaint_type` across Step 2's `cluster_usids` → `table=[{complaint_type, count}]`.
+- DATA AGENT: replace with the real complaint query (e.g. group care-call reasons by
+  type for the cluster); keep the `{complaint_type, count}` output shape.
+
+**2. RAN RRC_Conn KPI timeseries (`rrc_kpi`, a `timeseries` panel)**
+- Pull `voc_ran_kpi` — columns: `usid`, `timestamp` (hourly), `rrc_conn`. Analyzer
+  `voc_rrc_kpi` builds a `TimeseriesData` (same daily/3-hourly/hourly windows as the
+  care-call chart) for the trend cluster + ticket USIDs; the panel reuses
+  `overlay_ref: ticket_search` to show the ticket bands. User toggles USIDs /
+  granularity exactly like the call-volume chart.
+- DATA AGENT: replace with the real RRC_Conn KPI query (per-USID hourly); keep the
+  `usid, timestamp, rrc_conn` shape. The analyzer resamples (mean) per granularity.
+
+## AI panel mode (fixed flow + NL input) — see [docs/11](../../docs/11-ai-panel-builder.md)
+
+`meta.ai_panels: true` enables an AI chat in the add-panel flow. Two engines ship: the
+default **free/offline `SimulatedAIEngine`** (no LLM, no key, no cost) and a fully built
+**real `LLMToolEngine`** that routes via a local **gpt-oss** endpoint. The LLM agent does
+**not write engine code** — it just sets config: `RCA_AI_PROVIDER=openai`,
+`RCA_AI_BASE_URL=<gpt-oss>/v1`, `RCA_AI_MODEL=<model>` (`pip install '.[ai]'`). Full
+handoff: **[docs/handoff/ai-panel-llm/](../../docs/handoff/ai-panel-llm/)**. Two AI test
+cases on this template:
+
+**A. Tunable call-volume chart (`call_volume_trend`, a `timeseries` panel).** No own
+data_pull — it reuses the main `voc_call_volume` pull + Step 2's `cluster_usids`. The
+analyzer `voc_call_volume_trend` reads AI params from `ctx.params`: `date_start`,
+`date_end` (ISO), `granularity` (`daily`|`3h`|`hourly`). Shared helpers
+`_build_grids` / `_build_volume_ts` make the window/granularity tunable without
+changing the `TimeseriesData` contract (no params → default behavior). The same
+params also flow into `voc_rrc_kpi`.
+- DATA AGENT: when you push windowing to SQL, honor `date_start`/`date_end`/
+  `granularity` from `ctx.params`; keep the `volume_ts` output shape.
+
+**B. Transcript symptom breakdown (`transcript_summary`, `requires_ai: true`).** Pull
+`voc_call_transcripts` — columns: `usid`, `call_time`, `transcript_text` (free text).
+The analyzer `voc_transcript_summary` filters to the cluster, then calls the
+predefined `summarize_symptoms` **skill** to filter out non-network asks and count
+distinct users per symptom; it renders one markdown panel (narrative + ranked list).
+Marked `requires_ai`, so it is hidden from the manual picker and only built via the
+AI chat.
+- DATA AGENT: replace the dummy transcript source; keep the `usid, call_time,
+  transcript_text` shape.
+- LLM AGENT (`# LLM AGENT:` in `ai/skills/text_synthesis.py`): replace the keyword
+  classifier with a real LLM call, registering it under the same name
+  `@skill("summarize_symptoms")`; keep the `{summary, breakdown:[{symptom_type,
+  n_users, n_mentions, share}]}` output shape so the panel renders unchanged.
 
 ## (A) Switch from dummy data to real Snowflake — the main task
 

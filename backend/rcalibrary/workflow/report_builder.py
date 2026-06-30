@@ -23,6 +23,7 @@ from ..reporting.contract import (
     PanelPayload,
     ReportPayload,
     StatData,
+    StatGroupData,
     TableData,
     TimeseriesData,
 )
@@ -32,6 +33,7 @@ _ANOMALY_COLOR = "#c0392b"  # NetSkills --bad
 _TABLE_ROW_CAP = 500
 _DEFAULT_WIDTH = {
     "stat": "third",
+    "stat_group": "full",
     "line": "full",
     "scatter": "full",
     "heatmap": "full",
@@ -41,6 +43,7 @@ _DEFAULT_WIDTH = {
     "timeseries": "full",
     "map": "full",
     "flow": "full",
+    "pie": "half",
     "bar": "half",
 }
 
@@ -105,6 +108,8 @@ def _build_panel(
         _fill_table(spec, datasets, ar, panel)
     elif ptype == "stat":
         _fill_stat(spec, ar, panel)
+    elif ptype == "stat_group":
+        _fill_stat_group(spec, analysis_results, panel)
     elif ptype == "fields":
         _fill_fields(spec, ar, panel)
         # Optional: append/insert extra field boxes computed by another step.
@@ -119,6 +124,8 @@ def _build_panel(
                 panel.timeseries.tickets = overlay_ar.summary.get("ticket_overlay") or []
     elif ptype == "map":
         _fill_map(spec, ar, panel)
+    elif ptype == "pie":
+        _fill_pie(spec, datasets, ar, panel)
     elif ptype == "heatmap":
         _fill_heatmap(spec, datasets, panel)
     elif ptype == "markdown":
@@ -176,6 +183,30 @@ def _series_trace(spec, name, x, y) -> dict[str, Any]:
     return {"type": "scatter", "mode": mode, "name": name, "x": x, "y": y}
 
 
+def _fill_pie(spec, datasets, ar, panel) -> None:
+    """Pie/donut from an analysis `table` (preferred) or the panel's dataset, using
+    encoding.labels/values (falling back to x/y). Emits a Plotly pie trace."""
+    enc = spec.encoding
+    records: list[dict] = ar.table if (ar and ar.table) else []
+    if not records:
+        frame = _frame_for(spec.dataset, datasets)
+        records = frame.to_dict("records") if frame is not None else []
+    lab, val = (enc.labels or enc.x), (enc.values or enc.y)
+    labels = [_py(r.get(lab)) for r in records] if lab else []
+    values = [_py(r.get(val)) for r in records] if val else []
+    if not labels or not values:
+        # no data (e.g. trend not found) -> a readable message, not an empty pie
+        notice = (ar.summary.get("empty_notice") if ar else None) or "No data to chart."
+        panel.markdown = notice
+        panel.type = "markdown"
+        return
+    panel.traces = [{
+        "type": "pie", "labels": labels, "values": values,
+        "textinfo": "label+percent", "hole": spec.options.get("hole", 0),
+    }]
+    panel.layout = {"showlegend": True}
+
+
 # -- non-chart panels -------------------------------------------------------
 def _fill_table(spec, datasets, ar, panel) -> None:
     records: list[dict] = []
@@ -212,6 +243,35 @@ def _fill_stat(spec, ar, panel) -> None:
     )
     if ar and ar.anomalies:
         panel.anomalies = AnomalyHighlight(severity_counts=_count_severity(ar.anomalies))
+
+
+def _fill_stat_group(spec, analysis_results, panel) -> None:
+    """Combine several stat cards into ONE panel. Each entry in ``options.stats`` is
+    a mini stat-spec: ``{title, analysis_ref, value, state, sub, badge, detail,
+    alert, unit, value_text, visible_when:{ref,key}}`` — read from the referenced
+    analysis result. A gated entry whose ``visible_when`` is falsy is dropped."""
+    items: list[StatData] = []
+    for sub in spec.options.get("stats", []):
+        vw = sub.get("visible_when")
+        if vw:
+            gate = analysis_results.get(vw.get("ref"))
+            if not (gate and gate.summary.get(vw.get("key"))):
+                continue
+        ar = analysis_results.get(sub.get("analysis_ref"))
+        summary = ar.summary if ar else {}
+        get = lambda k: (summary.get(sub[k]) if sub.get(k) else None)  # noqa: E731
+        items.append(StatData(
+            label=sub.get("title", ""),
+            value=_py(get("value")),
+            unit=sub.get("unit"),
+            state=get("state"),
+            badge=get("badge"),
+            detail=get("detail"),
+            sub=get("sub"),
+            alert=get("alert"),
+            value_text=bool(sub.get("value_text")),
+        ))
+    panel.stat_group = StatGroupData(items=items)
 
 
 def _fill_fields(spec, ar, panel) -> None:

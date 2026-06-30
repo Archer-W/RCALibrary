@@ -191,11 +191,111 @@ def _has_active(frame) -> bool:
 def _empty_ts(notice: str) -> dict:
     return {
         "default_granularity": "daily",
-        "granularities": [{"key": g["key"], "label": g["label"]} for g in _GRANS],
+        "granularities": _granularities(),
         "windows": {},
         "series": [],
         "y_title": "Care call volume",
         "notice": notice,
+    }
+
+
+# --- AI-tunable window / granularity (Phase A) -------------------------------
+# These let the timeseries panels honor AI-resolved params (date_start/date_end/
+# granularity) WITHOUT changing the contract. No params -> identical default
+# behavior. The simulated AI engine fills these from a free-text request.
+
+
+def _granularities() -> list:
+    return [{"key": g["key"], "label": g["label"]} for g in _GRANS]
+
+
+def _norm_gran(value) -> str | None:
+    """Map an AI-supplied granularity string to a known _GRANS key, else None."""
+    if not value:
+        return None
+    v = str(value).strip().lower()
+    if v in ("daily", "day", "days", "d"):
+        return "daily"
+    if v in ("3h", "3-hourly", "3 hourly", "3-hour", "3 hour", "three-hourly", "three-hour"):
+        return "3h"
+    if v in ("hourly", "hour", "hours", "h"):
+        return "hourly"
+    return None
+
+
+def _resolve_default_gran(params) -> str:
+    """Which granularity the chart opens on (AI choice, else daily)."""
+    return _norm_gran((params or {}).get("granularity")) or "daily"
+
+
+def _build_grids(first_start, now, params=None):
+    """Per-granularity time grids + windows. No params -> the default windows
+    (open ``back`` days before the first trend start, end at now). AI params
+    override: ``date_start`` / ``date_end`` (ISO) clamp the window. An inverted or
+    unparseable range falls back to the default. Returns ``(grids, windows)``."""
+    params = params or {}
+    start_override = _parse_dt(params.get("date_start")) if params.get("date_start") else pd.NaT
+    end_override = _parse_dt(params.get("date_end")) if params.get("date_end") else pd.NaT
+    grids, windows = {}, {}
+    for g in _GRANS:
+        default_start = (first_start - pd.Timedelta(days=g["back"])).floor(g["freq"])
+        end = end_override if not pd.isna(end_override) else now
+        start = pd.Timestamp(start_override).floor(g["freq"]) if not pd.isna(start_override) else default_start
+        if start > end:  # garbage/inverted range -> fall back to the default window
+            start, end = default_start, now
+        grids[g["key"]] = pd.date_range(start, end, freq=g["freq"])
+        windows[g["key"]] = {"start": start.isoformat(), "end": pd.Timestamp(end).isoformat()}
+    return grids, windows
+
+
+def _build_volume_ts(usids, anchor_usid, volume, first_start, last_end, now, params=None):
+    """Build the care-call-volume ``TimeseriesData`` for a set of USIDs (per-USID
+    series + an aggregated dedup line) across each granularity, honoring AI params.
+    Shared by Step 2 (no params) and the ``call_volume_trend`` library panel."""
+    grids, windows = _build_grids(first_start, now, params)
+    vol = volume.copy() if volume is not None else pd.DataFrame(columns=["usid", "timestamp", "call_volume"])
+    if len(vol):
+        vol["_ts"] = _parse_dt(vol["timestamp"])
+        vol["usid"] = vol["usid"].astype(str)
+    agg = {g["key"]: None for g in _GRANS}
+    series = []
+    for usid in usids:
+        rows = vol[vol["usid"] == usid] if len(vol) else vol
+        role = "anchor" if usid == anchor_usid else "neighbor"
+        by_gran = {}
+        for g in _GRANS:
+            grid = grids[g["key"]]
+            if len(rows):
+                s = rows.set_index("_ts")["call_volume"].astype(float).sort_index()
+                s = s.resample(g["freq"]).sum().reindex(grid).fillna(0.0)
+            else:
+                s = pd.Series(0.0, index=grid)
+            by_gran[g["key"]] = {"x": [t.isoformat() for t in grid], "y": [float(v) for v in s.values]}
+            agg[g["key"]] = s.values if agg[g["key"]] is None else agg[g["key"]] + s.values
+        label = f"{usid} (searched)" if role == "anchor" else usid
+        series.append({"usid": usid, "label": label, "role": role, "by_gran": by_gran})
+
+    # Aggregated (deduplicated) line. DATA AGENT: real dedup is record-level (a call
+    # linked to >1 trend counted once). Placeholder: a capped sum across USIDs.
+    agg_series = {"usid": "__aggregate__", "label": "Aggregated (dedup)", "role": "aggregate", "by_gran": {}}
+    for g in _GRANS:
+        grid = grids[g["key"]]
+        vals = agg[g["key"]] if agg[g["key"]] is not None else [0.0] * len(grid)
+        agg_series["by_gran"][g["key"]] = {
+            "x": [t.isoformat() for t in grid],
+            "y": [round(float(v) * NEIGHBOR_DEDUP_FACTOR, 2) for v in vals],
+        }
+    series.append(agg_series)
+
+    return {
+        "default_granularity": _resolve_default_gran(params),
+        "granularities": _granularities(),
+        "windows": windows,
+        "series": series,
+        # earliest trend start -> latest trend end (ongoing trends end at now)
+        "trend_span": {"start": first_start.isoformat(), "end": last_end.isoformat()},
+        "y_title": "Care call volume",
+        "notice": None,
     }
 
 
@@ -270,61 +370,16 @@ def voc_neighbor_correlation(ctx: AnalysisContext) -> AnalysisResult:
             },
             table=table,
         )
-    grids, windows = {}, {}
-    for g in _GRANS:
-        start = (first_start - pd.Timedelta(days=g["back"])).floor(g["freq"])
-        end = now  # x-axis ends at the present — never in the future
-        grids[g["key"]] = pd.date_range(start, end, freq=g["freq"])
-        windows[g["key"]] = {"start": start.isoformat(), "end": end.isoformat()}
-
-    # --- per-USID call-volume series, resampled to each granularity ----------
+    # --- per-USID call-volume series + windows (shared with call_volume_trend) -
+    # `vol` (parsed) is kept for the anomaly-window call totals below.
     vol = volume.copy() if volume is not None else pd.DataFrame(columns=["usid", "timestamp", "call_volume"])
     if len(vol):
         vol["_ts"] = _parse_dt(vol["timestamp"])
         vol["usid"] = vol["usid"].astype(str)
 
     usids = list(dict.fromkeys(str(u) for u in corr["usid"]))  # unique, anchor first
-    agg = {g["key"]: None for g in _GRANS}
-    series = []
-    for usid in usids:
-        rows = vol[vol["usid"] == usid] if len(vol) else vol
-        role = "anchor" if usid == anchor_usid else "neighbor"
-        by_gran = {}
-        for g in _GRANS:
-            grid = grids[g["key"]]
-            if len(rows):
-                s = rows.set_index("_ts")["call_volume"].astype(float).sort_index()
-                s = s.resample(g["freq"]).sum().reindex(grid).fillna(0.0)
-            else:
-                s = pd.Series(0.0, index=grid)
-            by_gran[g["key"]] = {"x": [t.isoformat() for t in grid], "y": [float(v) for v in s.values]}
-            agg[g["key"]] = s.values if agg[g["key"]] is None else agg[g["key"]] + s.values
-        label = f"{usid} (searched)" if role == "anchor" else usid
-        series.append({"usid": usid, "label": label, "role": role, "by_gran": by_gran})
-
-    # --- aggregated (deduplicated) line --------------------------------------
-    # DATA AGENT: real dedup is record-level (a call linked to >1 trend counted
-    # once). Placeholder: a capped sum across USIDs.
-    agg_series = {"usid": "__aggregate__", "label": "Aggregated (dedup)", "role": "aggregate", "by_gran": {}}
-    for g in _GRANS:
-        grid = grids[g["key"]]
-        vals = agg[g["key"]] if agg[g["key"]] is not None else [0.0] * len(grid)
-        agg_series["by_gran"][g["key"]] = {
-            "x": [t.isoformat() for t in grid],
-            "y": [round(float(v) * NEIGHBOR_DEDUP_FACTOR, 2) for v in vals],
-        }
-    series.append(agg_series)
-
-    volume_ts = {
-        "default_granularity": "daily",
-        "granularities": [{"key": g["key"], "label": g["label"]} for g in _GRANS],
-        "windows": windows,
-        "series": series,
-        # earliest trend start -> latest trend end (ongoing trends end at now)
-        "trend_span": {"start": first_start.isoformat(), "end": last_end.isoformat()},
-        "y_title": "Care call volume",
-        "notice": None,
-    }
+    # Default windows (no AI params) — the report's main chart is not AI-tuned.
+    volume_ts = _build_volume_ts(usids, anchor_usid, volume, first_start, last_end, now)
 
     # --- call totals within the anomaly window (Trend-panel boxes + the map) --
     if len(vol):
@@ -690,3 +745,197 @@ def voc_map_build(ctx: AnalysisContext) -> AnalysisResult:
         "notice": "No sites to map." if not feats else (None if center else "No sites have coordinates to map."),
     }
     return AnalysisResult(summary={"found": True, "map_data": map_data})
+
+
+# =============================================================================
+# Optional LIBRARY panels — computed ON DEMAND when the user adds them from the
+# panel library (NOT part of the default report). DATA AGENT: real complaint +
+# RAN-KPI queries replace these dummies; the report CONTRACT (pie / timeseries
+# shapes) stays. See templates/.../IMPLEMENTATION.md and docs/10.
+# =============================================================================
+
+
+@analyzer("voc_call_volume_trend")
+def voc_call_volume_trend(ctx: AnalysisContext) -> AnalysisResult:
+    """Care-call-volume timeseries for the trend cluster with an **AI-tunable** date
+    range + granularity (Phase A test case). Reuses the main ``call_volume`` pull
+    and Step 2's ``cluster_usids``; reads AI params from ``ctx.params``
+    (``date_start`` / ``date_end`` / ``granularity``) and reuses the ``volume_ts``
+    contract so the interactive timeseries + ticket overlay render unchanged."""
+    now = pd.Timestamp(datetime.now(timezone.utc))
+    prior = ctx.results.get("collect_trend")
+    anchor = (prior.summary.get("anchor") if prior else None) or {}
+    if not anchor.get("found"):
+        return AnalysisResult(summary={"found": False, "volume_ts": _empty_ts("No confirmed trend.")})
+    anchor_usid = str(anchor.get("usid") or "")
+    s2 = (ctx.results.get("neighbor_correlation").summary if ctx.results.get("neighbor_correlation") else {}) or {}
+    usids = [str(u) for u in (s2.get("cluster_usids") or [])] or ([anchor_usid] if anchor_usid else [])
+    span = s2.get("trend_span") or {}
+    first_start = _parse_dt(span.get("start"))
+    last_end = _parse_dt(span.get("end"))
+    if pd.isna(first_start):
+        first_start = now - pd.Timedelta(days=14)
+    if pd.isna(last_end):
+        last_end = now
+    volume_ts = _build_volume_ts(
+        usids, anchor_usid, ctx.datasets.get("call_volume"), first_start, last_end, now, ctx.params
+    )
+    return AnalysisResult(summary={"found": True, "volume_ts": volume_ts})
+
+
+@analyzer("voc_complaint_distribution")
+def voc_complaint_distribution(ctx: AnalysisContext) -> AnalysisResult:
+    """Distribution of customer-complaint types across the trend cluster -> a pie.
+    Chains on Step 1's anchor + Step 2's ``cluster_usids``; primary input is the
+    ``complaints`` pull (``ctx.dataset``: usid, complaint_type, count)."""
+    prior = ctx.results.get("collect_trend")
+    anchor = (prior.summary.get("anchor") if prior else None) or {}
+    if not anchor.get("found"):
+        return AnalysisResult(summary={"found": False, "empty_notice": "No confirmed trend."})
+    s2 = ctx.results.get("neighbor_correlation")
+    cluster = [str(u) for u in ((s2.summary.get("cluster_usids") if s2 else None) or [])]
+    if not cluster:
+        cluster = [str(anchor.get("usid") or "")]
+    df = ctx.dataset
+    if df is None or "complaint_type" not in getattr(df, "columns", []):
+        return AnalysisResult(summary={"found": True, "empty_notice": "No complaint data."}, table=[])
+    df = df.copy()
+    df["usid"] = df["usid"].astype(str)
+    sub = df[df["usid"].isin(cluster)]
+    if not len(sub):  # fall back to all rows if the cluster has none
+        sub = df
+    sub = sub.assign(_c=pd.to_numeric(sub.get("count"), errors="coerce").fillna(1.0))
+    grouped = sub.groupby("complaint_type")["_c"].sum().sort_values(ascending=False)
+    table = [{"complaint_type": str(k), "count": int(round(float(v)))} for k, v in grouped.items()]
+    return AnalysisResult(
+        summary={
+            "found": True,
+            "total_complaints": int(round(float(grouped.sum()))),
+            "empty_notice": "No complaints for this cluster.",
+        },
+        table=table,
+    )
+
+
+@analyzer("voc_rrc_kpi")
+def voc_rrc_kpi(ctx: AnalysisContext) -> AnalysisResult:
+    """Hourly RRC_Conn KPI timeseries for the trend cluster + ticket USIDs, over the
+    SAME daily/3-hourly/hourly windows as the care-call chart. Reuses the
+    ``TimeseriesData`` contract so the interactive ``timeseries`` panel + ticket
+    overlay render unchanged. Primary input: the ``ran_kpi`` pull (``ctx.dataset``:
+    usid, timestamp, rrc_conn). Chains on Steps 1-3 via ``ctx.results``."""
+    now = pd.Timestamp(datetime.now(timezone.utc))
+    grans = [{"key": g["key"], "label": g["label"]} for g in _GRANS]
+    empty = {"default_granularity": "daily", "granularities": grans, "windows": {},
+             "series": [], "y_title": "RRC connected users", "notice": None}
+    prior = ctx.results.get("collect_trend")
+    anchor = (prior.summary.get("anchor") if prior else None) or {}
+    if not anchor.get("found"):
+        return AnalysisResult(summary={"found": False, "rrc_ts": {**empty, "notice": "No confirmed trend."}})
+
+    anchor_usid = str(anchor.get("usid") or "")
+    s2 = (ctx.results.get("neighbor_correlation").summary if ctx.results.get("neighbor_correlation") else {}) or {}
+    s3 = (ctx.results.get("ticket_search").summary if ctx.results.get("ticket_search") else {}) or {}
+    cluster = [str(u) for u in (s2.get("cluster_usids") or [])]
+    ticket_usids = [str(t.get("usid")) for t in (s3.get("ticket_overlay") or []) if t.get("usid")]
+    usids = list(dict.fromkeys(([anchor_usid] if anchor_usid else []) + cluster + ticket_usids))
+
+    span = s2.get("trend_span") or {}
+    first_start = _parse_dt(span.get("start"))
+    if pd.isna(first_start):
+        first_start = now - pd.Timedelta(days=14)
+
+    kpi = ctx.dataset
+    if kpi is not None and len(kpi):
+        kpi = kpi.copy()
+        kpi["usid"] = kpi["usid"].astype(str)
+        kpi["_ts"] = _parse_dt(kpi["timestamp"])
+
+    # Honors AI params (date_start/date_end/granularity) like the call-volume chart.
+    grids, windows = _build_grids(first_start, now, ctx.params)
+
+    series = []
+    for usid in usids:
+        rows = kpi[kpi["usid"] == usid] if (kpi is not None and len(kpi)) else None
+        by_gran = {}
+        for g in _GRANS:
+            grid = grids[g["key"]]
+            if rows is not None and len(rows):
+                s = rows.set_index("_ts")["rrc_conn"].astype(float).sort_index()
+                s = s.resample(g["freq"]).mean().reindex(grid).ffill().fillna(0.0)  # KPI = average
+            else:
+                s = pd.Series(0.0, index=grid)
+            by_gran[g["key"]] = {"x": [t.isoformat() for t in grid], "y": [round(float(v), 1) for v in s.values]}
+        series.append({
+            "usid": usid,
+            "label": f"{usid} (searched)" if usid == anchor_usid else usid,
+            "role": "anchor" if usid == anchor_usid else "neighbor",
+            "by_gran": by_gran,
+        })
+
+    rrc_ts = {
+        "default_granularity": _resolve_default_gran(ctx.params), "granularities": grans, "windows": windows,
+        "series": series, "trend_span": span or None,
+        "y_title": "RRC connected users", "notice": None if series else "No RRC KPI data.",
+    }
+    return AnalysisResult(summary={"found": True, "rrc_ts": rrc_ts})
+
+
+# --- AI-only: customer symptom breakdown from call transcripts (Phase B) ------
+# Digests free-text transcripts via the predefined `summarize_symptoms` skill
+# (deterministic dev stand-in; an LLM in production), filters non-network asks, and
+# renders one markdown panel (narrative + ranked symptom list). The library panel
+# is marked requires_ai, so it is only addable via the AI chat. See docs/11.
+
+
+def _transcript_markdown(result: dict) -> str:
+    """Compose the narrative + a ranked symptom list as markdown (the panel renderer
+    supports **bold** + newlines, so a bulleted list reads cleanly)."""
+    lines = [str(result.get("summary") or ""), ""]
+    breakdown = result.get("breakdown") or []
+    if breakdown:
+        lines.append("**Symptom breakdown** (distinct users):")
+        for b in breakdown:
+            lines.append(f"• **{b['symptom_type']}** — {b['n_users']} users ({b['n_mentions']} mentions)")
+    else:
+        lines.append("_No network-related symptoms were found in the transcripts._")
+    return "\n".join(lines)
+
+
+@analyzer("voc_transcript_summary")
+def voc_transcript_summary(ctx: AnalysisContext) -> AnalysisResult:
+    """Summarize the trend cluster's care-call transcripts into a network-symptom
+    breakdown. Chains on Step 1 (anchor) + Step 2 (``cluster_usids``); primary input
+    is the ``call_transcripts`` pull (``ctx.dataset``: usid, call_time,
+    transcript_text). Calls the predefined ``summarize_symptoms`` skill (offline/
+    deterministic here; an LLM in the other agent's env) to filter non-network asks
+    and count distinct users per symptom.
+    # DATA AGENT: real transcript source. # LLM AGENT: real summarize_symptoms skill."""
+    prior = ctx.results.get("collect_trend")
+    anchor = (prior.summary.get("anchor") if prior else None) or {}
+    if not anchor.get("found"):
+        return AnalysisResult(summary={"found": False, "markdown": "_No confirmed trend; nothing to summarize._"})
+    s2 = ctx.results.get("neighbor_correlation")
+    cluster = [str(u) for u in ((s2.summary.get("cluster_usids") if s2 else None) or [])]
+    if not cluster:
+        cluster = [str(anchor.get("usid") or "")]
+    df = ctx.dataset
+    if df is None or "transcript_text" not in getattr(df, "columns", []):
+        return AnalysisResult(summary={"found": True, "markdown": "_No transcript data available._"}, table=[])
+    df = df.copy()
+    df["usid"] = df["usid"].astype(str)
+    sub = df[df["usid"].isin(cluster)]
+    if not len(sub):  # fall back to all transcripts if none are tagged to the cluster
+        sub = df
+    transcripts = [
+        {"usid": str(r.get("usid") or ""), "text": str(r.get("transcript_text") or "")}
+        for _, r in sub.iterrows()
+    ]
+    # Import here so usecases load even if rcalibrary.ai is unavailable in some env.
+    from rcalibrary.ai.skills import default_registry as skills
+
+    result = skills.get("summarize_symptoms")(transcripts, filter_non_network=True)
+    return AnalysisResult(
+        summary={"found": True, "markdown": _transcript_markdown(result), "symptom_breakdown": result},
+        table=list(result.get("breakdown") or []),
+    )
